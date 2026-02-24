@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login / Signup | GreenCode Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-emerald-900 flex items-center justify-center min-h-screen">
+    <div class="bg-white/90 backdrop-blur-md p-8 rounded-2xl shadow-2xl w-96 text-center border border-white/20">
+        <h2 class="text-2xl font-black mb-6 text-emerald-800 uppercase tracking-tighter">GreenCode Access</h2>
+        
+        <input type="text" id="username" placeholder="Username" class="w-full mb-4 p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 text-sm font-mono">
+        
+        <input type="password" id="password" placeholder="Password" class="w-full mb-6 p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 text-sm font-mono">
+        
+        <button onclick="auth('api/login.php')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl mb-3 font-bold uppercase tracking-widest text-xs transition-colors">Log In</button>
+        
+        <button onclick="auth('api/signup.php')" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs transition-colors">Create Account</button>
+        
+        <p id="msg" class="mt-4 text-red-500 text-xs font-bold uppercase"></p>
+    </div>
+
+    <script>
+        async function auth(endpoint) {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = 'index.html';
+            } else {
+                document.getElementById('msg').innerText = data.error;
+            }
+        }
+    </script>
+</body>
+</html>
