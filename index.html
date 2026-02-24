@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenCompute | Energy Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js" defer></script>
+    <style>
+        #bgVideo { position: fixed; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto; height: auto; z-index: -100; transform: translate(-50%, -50%); object-fit: cover; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.25); z-index: -90; }
+        .glass-card { background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        #terminalBody::-webkit-scrollbar { width: 6px; }
+        #terminalBody::-webkit-scrollbar-thumb { background: #065f46; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #10b981; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="font-sans min-h-screen selection:bg-emerald-200">
+
+    <video autoplay muted loop playsinline id="bgVideo">
+        <source src="nature.mp4" type="video/mp4">
+    </video>
+    <div class="overlay"></div>
+
+    <nav class="bg-emerald-800/90 backdrop-blur-md p-4 text-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-tight">GreenCode Analyzer <span class="text-emerald-400 font-light italic">by GILBERTO Systems</span></h1>
+            <div class="flex items-center gap-4">
+                <div id="engineStatus" class="flex items-center gap-2 px-3 py-1 bg-emerald-900 rounded-full">
+                    <div class="loader" id="engineLoader"></div>
+                    <span id="statusIndicator" class="text-[10px] text-emerald-300 font-black tracking-widest uppercase">Booting Worker...</span>
+                </div>
+                <span class="text-xs opacity-60 font-mono">v5.0_Manual_Algo</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto mt-8 p-4 grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+        <section class="lg:col-span-7 glass-card p-6 rounded-3xl shadow-2xl flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-black text-emerald-900 uppercase tracking-tighter">Code Analyzer</h2>
+                <select id="langSelect" class="bg-emerald-100/50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-1 rounded-lg focus:outline-none">
+                    <option value="python">Python 3.11 (WASM Thread)</option>
+                </select>
+            </div>
+            
+            <h2 class="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-2">Live Execution Input</h2>
+
+            <textarea id="codeInput" class="w-full p-4 bg-gray-900 text-emerald-400 font-mono text-xs rounded-t-2xl border-b border-gray-800 focus:outline-none" style="height: 200px;" placeholder="def main():&#10;    # Write complex logic here&#10;    total = 0&#10;    for i in range(10000):&#10;        total += i&#10;    print(total)&#10;&#10;main()"></textarea>
+            
+            <div id="dragHandler" class="w-full h-1.5 bg-emerald-600 hover:bg-blue-500 cursor-row-resize transition-colors flex items-center justify-center group z-30">
+                <div class="w-12 h-1 bg-white/30 rounded-full group-hover:bg-white/60"></div>
+            </div>
+
+           <div id="terminalContainer" class="w-full bg-black rounded-b-2xl p-5 font-mono text-xs mb-6 flex flex-col shadow-inner border-t border-gray-800 overflow-hidden" style="height: 250px;">
+                <div class="flex gap-2 mb-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-red-500 opacity-80"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500 opacity-80"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-500 opacity-80"></div>
+                    <span class="text-gray-600 ml-2 uppercase text-[9px] font-bold">Gilberto OS Terminal</span>
+                </div>
+                
+                <div id="terminalBody" class="text-emerald-100/80 leading-relaxed overflow-y-auto flex-grow whitespace-pre-wrap">
+                    <span class="text-emerald-500">guest:~$</span> Initializing Virtual Worker Thread...
+                </div>
+            </div>
+            
+            <button onclick="runRealAnalysis()" id="runBtn" disabled class="w-full bg-gray-500 text-white font-black py-4 rounded-2xl transition-all shadow-lg uppercase tracking-[0.2em] cursor-not-allowed">
+                Wait for Worker...
+            </button>
+        </section>
+
+        <section class="lg:col-span-5 flex flex-col gap-6">
+            <div class="glass-card p-6 rounded-3xl shadow-2xl flex-1">
+                <h2 class="text-lg font-black text-emerald-900 uppercase tracking-tighter mb-4 text-center">Real-Time Physics Model</h2>
+                <div class="h-64 bg-white/40 p-2 rounded-2xl border border-emerald-100/50">
+                    <canvas id="energyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="p-5 glass-card rounded-3xl text-center border-emerald-200">
+                    <p class="text-[10px] text-emerald-600 font-black uppercase mb-1 tracking-widest">Calculated Energy</p>
+                    <p id="totalJoulesDisp" class="text-3xl font-black text-emerald-900">0.00 J</p>
+                </div>
+                <div class="p-5 glass-card rounded-3xl text-center border-blue-200">
+                    <p class="text-[10px] text-blue-600 font-black uppercase mb-1 tracking-widest">Complexity Ops</p>
+                    <p id="opsCount" class="text-3xl font-black text-blue-900">0</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <section class="container mx-auto px-6 mb-24 mt-32">
+        <div class="glass-card rounded-[2rem] p-8 shadow-2xl border border-white/20">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-emerald-900 uppercase tracking-tighter italic">📊 Session Analytics Repository</h3>
+                <button onclick="clearLogs()" class="text-[10px] font-bold bg-red-100 text-red-600 px-4 py-1.5 rounded-full hover:bg-red-200 transition-all uppercase tracking-widest">CLEAR SESSION</button>
+            </div>
+            
+            <div class="overflow-y-auto max-h-80 pr-2 custom-scrollbar">
+                <table class="w-full text-left text-xs font-mono border-separate border-spacing-y-2">
+                    <thead class="sticky top-0 bg-white/90 backdrop-blur-md z-10">
+                        <tr class="text-emerald-800 uppercase tracking-widest text-[10px]">
+                            <th class="pb-4 px-2">ID & Time</th>
+                            <th class="pb-4 px-2">Time Complexity (Ops)</th>
+                            <th class="pb-4 px-2">Space Peak (Bytes)</th>
+                            <th class="pb-4 px-2 text-center">Energy (J)</th>
+                            <th class="pb-4 px-2 text-center">Energy (kWh)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analyticsTableBody" class="text-gray-600">
+                        <tr id="noDataRow"><td colspan="5" class="py-8 text-center opacity-50 italic">No execution data recorded yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4 flex justify-end">
+                <button onclick="exportToCSV()" class="text-[10px] bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl font-bold hover:bg-emerald-200 transition-all uppercase tracking-widest">
+                    📥 Export Dataset (.CSV)
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <footer class="mt-16 pb-12 text-center text-white/60 text-xs font-mono">
+        ©2026 GILBERTO Systems | GREENCODE ANALYZER v5.0 <br>
+        Physics-Based Manual Algorithm Engine
+    </footer>
+</body>
+</html>
