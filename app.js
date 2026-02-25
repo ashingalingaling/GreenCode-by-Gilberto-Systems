@@ -10,11 +10,23 @@ window.onload = function() {
 
 function instrumentPythonCodeJS(rawCode) {
     const lines = rawCode.split('\n');
-    let instrumentedCode = ['__tracker = {"ops": 0}'];
+    
+    // Initialize the mathematical tracker for BOTH Ops and Memory
+    let instrumentedCode = ['__tracker = {"ops": 0, "current_mem": 0, "peak_mem": 0}'];
     
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
+        
+        // --- PROXY OBJECT INTERCEPTOR ---
+        // Converts standard list assignments into GreenList proxies dynamically
+        if (line.match(/=\s*\[(.*?)\]/)) {
+            line = line.replace(/=\s*\[(.*?)\]/g, "= GreenList([$1])");
+        }
+        // --------------------------------
+        
         instrumentedCode.push(line);
+        
+        // Time Complexity Ops tracking
         if (line.match(/^\s*(for|while|def)\b.*:/)) {
             let nextLineIndent = "    "; 
             for (let j = i + 1; j < lines.length; j++) {
@@ -25,6 +37,7 @@ function instrumentPythonCodeJS(rawCode) {
                     break;
                 }
             }
+            // Inject the counter inside the loop body
             instrumentedCode.push(nextLineIndent + "__tracker['ops'] += 1");
         }
     }
@@ -76,6 +89,7 @@ function runRealAnalysis() {
     }
 
     document.getElementById('terminalBody').innerHTML = "";
+    
     logToTerminal("Instrumenting Code via JS Lexer...", "INFO");
     const dynamicallyInstrumentedCode = instrumentPythonCodeJS(userCode);
 
@@ -101,6 +115,7 @@ function calculateManualEnergy(data) {
     const M_peak = data.memory_peak_bytes; 
     const T_exec = data.duration_sec;      
 
+    // Physics Constants
     const C_CPU = 1.5e-9;
     const C_MEM = 2.25e-9;
     const C_BASE = 0.0005;
