@@ -8,6 +8,11 @@ try {
 
 let pyodideEngine = null;
 
+// Expose a telemetry function to the Python environment
+self.sendTelemetry = (ops, peak_mem) => {
+    postMessage({ type: "TELEMETRY", ops: ops, mem: peak_mem });
+};
+
 async function loadPyodideEngine() {
     try {
         pyodideEngine = await loadPyodide({ indexURL: "./pyodide_engine/" });
@@ -26,7 +31,6 @@ self.onmessage = async (event) => {
         return;
     }
 
-    // Removed ast and tracemalloc completely!
     const analysisScript = `
 import sys
 import time
@@ -54,6 +58,13 @@ try:
     sys.setrecursionlimit(5000)
     
     proxy_definitions = """
+import js  # FIXED: Moved inside the proxy block so the exec() scope can see it
+
+def _check_telemetry():
+    # Stream data to the frontend every 250 operations
+    if __tracker['ops'] % 250 == 0:
+        js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+
 def _update_mem(bytes_added):
     global __tracker
     __tracker['current_mem'] += bytes_added
@@ -63,17 +74,16 @@ def _update_mem(bytes_added):
 class GreenList(list):
     def __init__(self, *args):
         super().__init__(*args)
-        # Apply formula: C_base (56) + N_items * C_ptr (8)
         self._size = 56 + (len(self) * 8)
         _update_mem(self._size)
         
     def append(self, item):
         super().append(item)
-        _update_mem(8) # Add 8 bytes for new pointer
+        _update_mem(8)
         
     def pop(self, index=-1):
         if len(self) > 0:
-            _update_mem(-8) # Free 8 bytes
+            _update_mem(-8)
         return super().pop(index)
         
     def clear(self):
@@ -82,8 +92,6 @@ class GreenList(list):
         _update_mem(-freed_bytes)
 """
 
-    # We append the userCode (which contains the JS injected __tracker) 
-    # underneath our Proxy setup to ensure everything is initialized correctly.
     full_code = proxy_definitions + "\\n" + ${JSON.stringify(userCode)}
     
     exec_globals = {
@@ -91,10 +99,8 @@ class GreenList(list):
         '__name__': '__main__'
     }
     
-    # Execute the combined mathematical script directly
     exec(full_code, exec_globals)
     
-    # Retrieve both dynamically tracked metrics
     if '__tracker' in exec_globals:
         final_ops = exec_globals['__tracker'].get('ops', 0)
         final_peak_mem = exec_globals['__tracker'].get('peak_mem', 0)
