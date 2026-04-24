@@ -1,96 +1,111 @@
 ======================================================
-GreenCode Analyzer - Local Setup & Installation Guide
+GreenCode Analyzer
 ======================================================
 
 PROJECT OVERVIEW
 ----------------
-GreenCode Analyzer is a web-based, hardware-agnostic energy profiling tool. 
-It uses Lexical Analysis and a Web Worker-isolated Pyodide (WebAssembly) engine 
-to evaluate the algorithmic Time Complexity (Ops) and Space Complexity (Peak Memory) 
-of Python 3.x scripts, converting them into estimated Joules and kWh.
+GreenCode Analyzer is a web-based, hardware-agnostic energy profiling tool developed by GILBERTO Systems. 
+It utilizes Lexical Analysis and a Web Worker-isolated Pyodide (WebAssembly) engine 
+to evaluate algorithmic Time Complexity (Ops) and Space Complexity (Peak Memory) 
+of Python 3.x scripts. These metrics are then processed through a custom physics engine 
+to estimate energy consumption in Joules and kWh. 
+
+This project operates on a Serverless Architecture, utilizing Supabase (PostgreSQL) 
+for secure cloud authentication and real-time database syncing.
 
 PREREQUISITES
 -------------
-1. XAMPP (or any local server with Apache and MySQL/MariaDB)
-2. Google Chrome, Microsoft Edge, or Mozilla Firefox (Latest versions)
-3. The downloaded `pyodide_engine` files (if running completely offline).
+1. Visual Studio Code (with the "Live Server" extension installed)
+2. A modern Web Browser (Google Chrome, Microsoft Edge, or Firefox)
+3. A Supabase Account (Free Tier) for database hosting.
 
 ======================================================
 STEP 1: FOLDER STRUCTURE SETUP
 ======================================================
-1. Open your XAMPP installation folder and navigate to the `htdocs` directory 
-   (Windows: C:\xampp\htdocs\ | Mac: /Applications/XAMPP/htdocs/).
-2. Create a new folder named `greencode`.
-3. Place all the project files into the `greencode` folder exactly like this:
+Since this is a serverless application, there is no need for local PHP or Apache servers. 
+Your project directory should look exactly like this:
 
-htdocs/
-└── greencode/
-    ├── index.html          (Main dashboard)
-    ├── login.html          (Authentication page)
-    ├── app.js              (Frontend logic & UI)
-    ├── worker.js           (Web Worker thread & Python environment)
-    ├── pyodide_engine/     (Must contain pyodide.js and associated .wasm files)*
-    └── api/                (Backend PHP files)
-        ├── db.php
-        ├── get_history.php
-        ├── login.php
-        ├── logout.php
-        ├── save_result.php
-        ├── signup.php
-        └── update_profile.php
-
-*Note on Pyodide: If you do not have the pyodide files downloaded locally, 
-open `worker.js` and change `importScripts("./pyodide_engine/pyodide.js");` 
-to `importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");`.
+GreenCode-by-Gilberto-Systems/
+    ├── index.html          (Main dashboard & UI)
+    ├── login.html          (Authentication & Registration)
+    ├── app.js              (Frontend logic, Chart.js, & Supabase SDK)
+    ├── worker.js           (Web Worker thread & Python WASM environment)
+    └── pyodide_engine/     (Optional: local Pyodide files for offline parsing)
 
 ======================================================
-STEP 2: START LOCAL SERVERS
+STEP 2: SUPABASE CLOUD DATABASE SETUP
 ======================================================
-1. Open the XAMPP Control Panel.
-2. Click "Start" next to the [Apache] module.
-3. Click "Start" next to the [MySQL] module.
-(Wait until both module backgrounds turn green).
+We need to configure the PostgreSQL database and Row Level Security (RLS) in the cloud.
 
-======================================================
-STEP 3: DATABASE CONFIGURATION
-======================================================
-We need to create the database so the login and history features work.
+1. Go to https://supabase.com/ and create a new project.
+2. Navigate to the "SQL Editor" on the left sidebar.
+3. Paste the following schema to create the tables and security policies, then click "Run":
 
-1. Open your web browser and go to: http://localhost/phpmyadmin
-2. Click on the "Databases" tab at the top.
-3. Under "Create database", type: `greencode_db` and click "Create".
-4. On the left sidebar, click on your newly created `greencode_db`.
-5. Click on the "SQL" tab at the top of the screen.
-6. Copy and paste the following SQL code into the text box and click "Go" (bottom right):
-
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- 1. Create Profiles Table (For Custom Usernames)
+CREATE TABLE profiles (
+  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  username TEXT NOT NULL,
+  email TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE execution_results (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    filename VARCHAR(255) DEFAULT 'script.py',
-    ops INT NOT NULL,
-    peak_memory_bytes INT NOT NULL,
-    energy_joules DOUBLE NOT NULL,
-    energy_kwh DOUBLE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+-- 2. Create History Table (For Analysis Results)
+CREATE TABLE history (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+    filename TEXT DEFAULT 'script.py',
+    ops NUMERIC NOT NULL,
+    peak_memory_bytes NUMERIC NOT NULL,
+    energy_joules NUMERIC NOT NULL,
+    energy_kwh NUMERIC NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 3. Enable Row Level Security (RLS)
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE history ENABLE ROW LEVEL SECURITY;
+
+-- 4. Set Security Policies (Users can only see/insert their own data)
+CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can view their own history" ON history FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert their own history" ON history FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- 5. Grant Permissions
+GRANT ALL ON TABLE profiles TO anon, authenticated;
+GRANT ALL ON TABLE history TO anon, authenticated;
+
 ======================================================
-STEP 4: RUNNING THE APPLICATION
+STEP 3: AUTHENTICATION CONFIGURATION
 ======================================================
-1. Open your web browser.
-2. Go to the following URL: http://localhost/greencode/login.html
-3. Click "Create Account" to register a new test user.
-4. Log in and start analyzing your Python scripts!
+To streamline testing and avoid Free-Tier email limits:
+1. In your Supabase Dashboard, go to Authentication > Providers > Email.
+2. Toggle "Confirm email" to OFF.
+3. Go to Authentication > Rate Limits.
+4. Increase the "Email rate limit" to prevent lockouts during rapid testing.
+
+======================================================
+STEP 4: CONNECTING THE FRONTEND
+======================================================
+1. In your Supabase Dashboard, go to Project Settings (the gear icon) > API.
+2. Copy your Project URL and anon public API Key.
+3. Open `app.js` and `login.html` in VS Code.
+4. Paste your credentials into the configuration block at the top of both files:
+
+const supabaseUrl = 'YOUR_URL_HERE';
+const supabaseKey = 'YOUR_ANON_KEY_HERE';
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+======================================================
+STEP 5: RUNNING THE APPLICATION
+======================================================
+1. Open the project folder in Visual Studio Code.
+2. Right-click on `login.html` and select "Open with Live Server".
+   (Note: Opening the HTML file directly from your file explorer without a server may block the Web Worker due to browser CORS security policies).
+3. Create an account, log in, and begin analyzing Python scripts!
 
 TROUBLESHOOTING
 ---------------
-- Browser Cache Issues: If you update `app.js` or `worker.js` and the changes aren't showing up, Google Chrome might be using an old cached version. Press `F12` to open Developer Tools, right-click the browser's "Refresh" button, and select "Empty Cache and Hard Reload".
-- Database Errors: Ensure XAMPP's MySQL is running. If you used a custom MySQL password during your XAMPP installation, update the `$password = '';` variable inside `api/db.php`.
+- "Username taken or error saving profile": Ensure you ran the `GRANT ALL` SQL commands in Step 2 so the database allows new registrations to write to the profiles table.
+- History Not Loading: Double-check that your browser's Developer Tools (Console) doesn't show any Supabase API key errors.
+- Web Worker Fails to Boot: Ensure you are running the project through VS Code Live Server (`http://127.0.0.1:5500`) and not just a `file:///` path in your browser.
