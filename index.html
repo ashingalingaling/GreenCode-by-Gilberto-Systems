@@ -6,9 +6,7 @@
     <title>GreenCode | Energy Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <script src="app.js" defer></script>
     <style>
         body { background-color: #d1d5db; } 
@@ -137,10 +135,19 @@
         </div>
     </section>
 
-    <section id="tab-profile" class="container mx-auto mt-6 p-4 max-w-md tab-hidden">
-        <div class="glass-card p-8 rounded-2xl text-center border-t-4 border-[#115e59]">
-            <h2 class="text-xl font-black text-[#115e59] uppercase tracking-widest mb-2">Account Security</h2>
-            <p class="text-xs text-gray-500 mb-6 uppercase tracking-widest">Update your access credentials</p>
+    <section id="tab-profile" class="container mx-auto mt-6 p-4 max-w-md tab-hidden mb-12">
+        <div class="glass-card p-8 rounded-2xl text-center border-t-4 border-[#115e59] shadow-xl">
+            
+            <div class="mb-8 pb-8 border-b border-gray-200">
+                <div class="w-20 h-20 bg-emerald-100 border-4 border-emerald-500 text-emerald-700 rounded-full flex items-center justify-center text-4xl font-black mx-auto mb-4 shadow-inner">
+                    <span id="profileAvatar">?</span>
+                </div>
+                <h2 id="profileUsername" class="text-2xl font-black text-gray-800 tracking-tight uppercase">Loading...</h2>
+                <p id="profileEmail" class="text-xs font-mono text-gray-500 mt-2 bg-gray-100 py-1 px-3 rounded-full inline-block">...</p>
+            </div>
+
+            <h3 class="text-sm font-black text-[#115e59] uppercase tracking-widest mb-2">Account Security</h3>
+            <p class="text-[10px] text-gray-500 mb-6 uppercase tracking-widest">Update your access credentials</p>
             
             <input type="password" id="newPassword" placeholder="Enter New Password" class="w-full mb-4 p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 text-sm font-mono text-center">
             

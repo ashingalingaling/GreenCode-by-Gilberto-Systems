@@ -167,7 +167,7 @@ async function executeBatch(scriptArray) {
     analysisResults = scriptArray.map(script => ({
         name: script.name,
         ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
-        status: 'RUNNING', // Tracks active status for the suggestions UI
+        status: 'RUNNING', 
         history: Array(25).fill(0) 
     }));
     
@@ -204,14 +204,13 @@ async function executeBatch(scriptArray) {
                 resState.error = finalRes.error;
                 logToTerminal(`[${resState.name}] Error: ${finalRes.error}`, "ERR");
                 
-                // If the error was a manual Force Stop, save the partial telemetry data
                 if (finalRes.error.includes("USER FORCED STOP")) {
                     logToTerminal(`[${resState.name}] Saving partial telemetry to database...`, "INFO");
                     await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
                 }
 
             } else {
-                resState.status = 'COMPLETED'; // Clears the loading message
+                resState.status = 'COMPLETED'; 
                 resState.ops = finalRes.ops || resState.ops;
                 resState.bytes = finalRes.memory_peak_bytes || resState.bytes;
                 const t_exec_final = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
@@ -223,7 +222,6 @@ async function executeBatch(scriptArray) {
 
                 logToTerminal(`[${resState.name}] Success: ${resState.ops} Ops`, "SUCCESS");
                 
-                // Passes the actual filename to the database saving function
                 await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
             }
         }
@@ -284,7 +282,6 @@ function updateCarouselUI() {
     if (analysisResults.length === 0) return;
     const current = analysisResults[currentDetailIndex];
 
-    // Remove the gray placeholder text formatting when a script is selected
     const filenameEl = document.getElementById('detailFilename');
     filenameEl.innerText = current.name;
     filenameEl.classList.remove('text-gray-400');
@@ -316,11 +313,9 @@ function jumpToDetail(index) {
 function generateSuggestions(data) {
     let text = "";
 
-    // 1. Always evaluate the metrics first (this retains advice even if stopped)
     if (data.bytes > 1000) text += "⚠️ High memory allocation detected. Avoid appending to large lists recursively. Try using Generators or List Comprehensions.\n\n";
     if (data.ops > 5000) text += "⚠️ High CPU operations. Check for nested loops [ O(n^2) ]. Consider using dictionaries for lookups instead of iterating through lists.\n\n";
 
-    // 2. Append the current execution status or errors
     if (data.status === 'RUNNING') {
         text += "⏳ Compiling and executing... Live telemetry active.";
     } else if (data.error) {
@@ -396,6 +391,36 @@ function switchTab(tabName) {
     }
 
     if (tabName === 'history') fetchAccountHistory();
+    if (tabName === 'profile') loadProfileData(); 
+}
+
+async function loadProfileData() {
+    const usernameEl = document.getElementById('profileUsername');
+    const emailEl = document.getElementById('profileEmail');
+    const avatarEl = document.getElementById('profileAvatar');
+
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return;
+
+        emailEl.innerText = user.email;
+
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+
+        if (data && data.username) {
+            usernameEl.innerText = data.username;
+            avatarEl.innerText = data.username.charAt(0).toUpperCase();
+        } else {
+            usernameEl.innerText = "GreenCoder";
+            avatarEl.innerText = "G";
+        }
+    } catch (e) {
+        console.error("Failed to load profile details:", e);
+    }
 }
 
 async function fetchAccountHistory() {
