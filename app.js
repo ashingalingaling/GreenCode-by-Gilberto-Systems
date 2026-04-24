@@ -1,6 +1,13 @@
 // app.js
 
 // ==========================================
+// SUPABASE CONFIGURATION
+// ==========================================
+const supabaseUrl = 'https://fadbccudiffeneemlmvb.supabase.co';
+const supabaseKey = 'sb_publishable__VXBEPzv_zSCuysL-UO02Q_LQ2kHh8z';
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+// ==========================================
 // STATE MANAGEMENT & CONSTANTS
 // ==========================================
 let uploadedFiles = []; 
@@ -397,58 +404,65 @@ async function fetchAccountHistory() {
     tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">Fetching from cloud...</td></tr>';
     
     try {
-        const response = await fetch('api/get_history.php');
-        const data = await response.json();
-        
-        if (data.success) {
-            tableBody.innerHTML = ''; 
-            if (data.results.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution history found for this account.</td></tr>';
-                return;
-            }
-            
-            let currentGroup = ""; 
-
-            data.results.forEach(row => {
-                const dateObj = new Date(row.created_at);
-                const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-                const groupKey = `${datePart} at ${timePart}`;
-
-                if (groupKey !== currentGroup) {
-                    currentGroup = groupKey;
-                    const headerTr = document.createElement('tr');
-                    headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
-                    headerTr.innerHTML = `
-                        <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
-                            ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
-                        </td>
-                    `;
-                    tableBody.appendChild(headerTr);
-                }
-
-                const tr = document.createElement('tr');
-                tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
-                const displayFilename = row.filename ? row.filename : "script.py"; 
-                
-                // NEW: Bulletproof kWh calculation directly from the precise Joules data
-                const preciseJoules = parseFloat(row.energy_joules);
-                const preciseKwh = preciseJoules / 3600000;
-                
-                tr.innerHTML = `
-                    <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
-                    <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
-                    <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
-                    <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
-                    <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
-                `;
-                tableBody.appendChild(tr);
-            });
-        } else {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) {
             tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Please log in to view history.</td></tr>';
+            return;
         }
+
+        const { data, error } = await supabaseClient
+            .from('history')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        tableBody.innerHTML = ''; 
+        if (data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution history found for this account.</td></tr>';
+            return;
+        }
+        
+        let currentGroup = ""; 
+
+        data.forEach(row => {
+            const dateObj = new Date(row.created_at);
+            const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+            const groupKey = `${datePart} at ${timePart}`;
+
+            if (groupKey !== currentGroup) {
+                currentGroup = groupKey;
+                const headerTr = document.createElement('tr');
+                headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
+                headerTr.innerHTML = `
+                    <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
+                        ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
+                    </td>
+                `;
+                tableBody.appendChild(headerTr);
+            }
+
+            const tr = document.createElement('tr');
+            tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
+            const displayFilename = row.filename ? row.filename : "script.py"; 
+            
+            const preciseJoules = parseFloat(row.energy_joules);
+            const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
+            
+            tr.innerHTML = `
+                <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
+                <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
+                <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
+                <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
+                <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
+            `;
+            tableBody.appendChild(tr);
+        });
     } catch (e) {
         tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Error connecting to database.</td></tr>';
+        console.error("Supabase fetch error:", e);
     }
 }
 
@@ -463,19 +477,14 @@ async function updateProfile() {
     }
 
     try {
-        const res = await fetch('api/update_profile.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ password: newPassword })
-        });
-        const data = await res.json();
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
         
-        if (data.success) {
-            msgElement.innerText = "Password updated successfully!";
+        if (!error) {
+            msgElement.innerText = "Password updated securely in the cloud!";
             msgElement.className = "mt-4 text-[10px] font-bold uppercase tracking-widest text-emerald-600";
             document.getElementById('newPassword').value = ''; 
         } else {
-            msgElement.innerText = data.error || "Update failed.";
+            msgElement.innerText = error.message || "Update failed.";
             msgElement.className = "mt-4 text-[10px] font-bold uppercase tracking-widest text-red-500";
         }
     } catch (e) {
@@ -485,24 +494,30 @@ async function updateProfile() {
 }
 
 async function logoutUser() {
-    await fetch('api/logout.php');
+    await supabaseClient.auth.signOut();
     window.location.href = 'login.html';
 }
 
 async function saveResultToDatabase(filename, ops, memory, joules, kwh) {
     try {
-        await fetch('api/save_result.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                filename: filename,
-                ops: ops,
-                memory_peak_bytes: memory,
-                energy_joules: joules,
-                energy_kwh: kwh
-            })
-        });
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) {
+            console.warn("User not logged in. History will not be saved.");
+            return;
+        }
+
+        const { error } = await supabaseClient.from('history').insert([{
+            user_id: user.id,
+            filename: filename,
+            ops: ops,
+            peak_memory_bytes: memory,
+            energy_joules: joules,
+            energy_kwh: kwh
+        }]);
+
+        if (error) throw error;
+        console.log(`Successfully synced ${filename} data to Supabase.`);
     } catch (e) {
-        console.error("Failed to sync with database.");
+        console.error("Failed to sync with database:", e);
     }
 }
