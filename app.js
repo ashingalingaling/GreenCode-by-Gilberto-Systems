@@ -1,6 +1,13 @@
 // app.js
 
 // ==========================================
+// SUPABASE CONFIGURATION
+// ==========================================
+const supabaseUrl = 'https://fadbccudiffeneemlmvb.supabase.co';
+const supabaseKey = 'sb_publishable__VXBEPzv_zSCuysL-UO02Q_LQ2kHh8z';
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+// ==========================================
 // STATE MANAGEMENT & CONSTANTS
 // ==========================================
 let uploadedFiles = []; 
@@ -8,6 +15,7 @@ let analysisResults = [];
 let currentDetailIndex = 0; 
 let energyChart;
 let activeWorkers = []; 
+let globalHistoryData = []; // NEW: Stores history for instant searching
 
 const C_CPU = 1.5e-9;
 const C_MEM = 2.25e-9;
@@ -160,7 +168,7 @@ async function executeBatch(scriptArray) {
     analysisResults = scriptArray.map(script => ({
         name: script.name,
         ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
-        status: 'RUNNING', // Tracks active status for the suggestions UI
+        status: 'RUNNING', 
         history: Array(25).fill(0) 
     }));
     
@@ -197,14 +205,13 @@ async function executeBatch(scriptArray) {
                 resState.error = finalRes.error;
                 logToTerminal(`[${resState.name}] Error: ${finalRes.error}`, "ERR");
                 
-                // If the error was a manual Force Stop, save the partial telemetry data
                 if (finalRes.error.includes("USER FORCED STOP")) {
                     logToTerminal(`[${resState.name}] Saving partial telemetry to database...`, "INFO");
                     await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
                 }
 
             } else {
-                resState.status = 'COMPLETED'; // Clears the loading message
+                resState.status = 'COMPLETED'; 
                 resState.ops = finalRes.ops || resState.ops;
                 resState.bytes = finalRes.memory_peak_bytes || resState.bytes;
                 const t_exec_final = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
@@ -216,7 +223,6 @@ async function executeBatch(scriptArray) {
 
                 logToTerminal(`[${resState.name}] Success: ${resState.ops} Ops`, "SUCCESS");
                 
-                // Passes the actual filename to the database saving function
                 await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
             }
         }
@@ -277,7 +283,6 @@ function updateCarouselUI() {
     if (analysisResults.length === 0) return;
     const current = analysisResults[currentDetailIndex];
 
-    // Remove the gray placeholder text formatting when a script is selected
     const filenameEl = document.getElementById('detailFilename');
     filenameEl.innerText = current.name;
     filenameEl.classList.remove('text-gray-400');
@@ -309,11 +314,9 @@ function jumpToDetail(index) {
 function generateSuggestions(data) {
     let text = "";
 
-    // 1. Always evaluate the metrics first (this retains advice even if stopped)
     if (data.bytes > 1000) text += "⚠️ High memory allocation detected. Avoid appending to large lists recursively. Try using Generators or List Comprehensions.\n\n";
     if (data.ops > 5000) text += "⚠️ High CPU operations. Check for nested loops [ O(n^2) ]. Consider using dictionaries for lookups instead of iterating through lists.\n\n";
 
-    // 2. Append the current execution status or errors
     if (data.status === 'RUNNING') {
         text += "⏳ Compiling and executing... Live telemetry active.";
     } else if (data.error) {
@@ -389,67 +392,135 @@ function switchTab(tabName) {
     }
 
     if (tabName === 'history') fetchAccountHistory();
+    if (tabName === 'profile') loadProfileData(); 
 }
 
+async function loadProfileData() {
+    const usernameEl = document.getElementById('profileUsername');
+    const emailEl = document.getElementById('profileEmail');
+    const avatarEl = document.getElementById('profileAvatar');
+
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return;
+
+        emailEl.innerText = user.email;
+
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+
+        if (data && data.username) {
+            usernameEl.innerText = data.username;
+            avatarEl.innerText = data.username.charAt(0).toUpperCase();
+        } else {
+            usernameEl.innerText = "GreenCoder";
+            avatarEl.innerText = "G";
+        }
+    } catch (e) {
+        console.error("Failed to load profile details:", e);
+    }
+}
+
+// ==========================================
+// HISTORY FETCHING & SEARCHING
+// ==========================================
 async function fetchAccountHistory() {
     const tableBody = document.getElementById('dbHistoryTableBody');
     if(!tableBody) return;
     tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">Fetching from cloud...</td></tr>';
     
     try {
-        const response = await fetch('api/get_history.php');
-        const data = await response.json();
-        
-        if (data.success) {
-            tableBody.innerHTML = ''; 
-            if (data.results.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution history found for this account.</td></tr>';
-                return;
-            }
-            
-            let currentGroup = ""; 
-
-            data.results.forEach(row => {
-                const dateObj = new Date(row.created_at);
-                const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-                const groupKey = `${datePart} at ${timePart}`;
-
-                if (groupKey !== currentGroup) {
-                    currentGroup = groupKey;
-                    const headerTr = document.createElement('tr');
-                    headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
-                    headerTr.innerHTML = `
-                        <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
-                            ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
-                        </td>
-                    `;
-                    tableBody.appendChild(headerTr);
-                }
-
-                const tr = document.createElement('tr');
-                tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
-                const displayFilename = row.filename ? row.filename : "script.py"; 
-                
-                // NEW: Bulletproof kWh calculation directly from the precise Joules data
-                const preciseJoules = parseFloat(row.energy_joules);
-                const preciseKwh = preciseJoules / 3600000;
-                
-                tr.innerHTML = `
-                    <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
-                    <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
-                    <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
-                    <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
-                    <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
-                `;
-                tableBody.appendChild(tr);
-            });
-        } else {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) {
             tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Please log in to view history.</td></tr>';
+            return;
         }
+
+        const { data, error } = await supabaseClient
+            .from('history')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Save the data globally so we can search it without asking Supabase again
+        globalHistoryData = data; 
+        renderHistoryTable(globalHistoryData);
+
     } catch (e) {
         tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Error connecting to database.</td></tr>';
+        console.error("Supabase fetch error:", e);
     }
+}
+
+function renderHistoryTable(dataToRender) {
+    const tableBody = document.getElementById('dbHistoryTableBody');
+    tableBody.innerHTML = ''; 
+    
+    if (!dataToRender || dataToRender.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution matching search found.</td></tr>';
+        return;
+    }
+    
+    let currentGroup = ""; 
+
+    dataToRender.forEach(row => {
+        const dateObj = new Date(row.created_at);
+        const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        const groupKey = `${datePart} at ${timePart}`;
+
+        // Only draw the date header if it's a new group
+        if (groupKey !== currentGroup) {
+            currentGroup = groupKey;
+            const headerTr = document.createElement('tr');
+            headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
+            headerTr.innerHTML = `
+                <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
+                    ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
+                </td>
+            `;
+            tableBody.appendChild(headerTr);
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
+        const displayFilename = row.filename ? row.filename : "script.py"; 
+        
+        const preciseJoules = parseFloat(row.energy_joules);
+        const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
+        
+        tr.innerHTML = `
+            <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
+            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
+            <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
+            <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
+            <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
+        `;
+        tableBody.appendChild(tr);
+    });
+}
+
+function searchHistory() {
+    const query = document.getElementById('historySearch').value.toLowerCase();
+    
+    // If search is empty, show everything
+    if (!query) {
+        renderHistoryTable(globalHistoryData);
+        return;
+    }
+    
+    // Filter the global array based on filename
+    const filteredData = globalHistoryData.filter(row => {
+        const filename = row.filename ? row.filename.toLowerCase() : "script.py";
+        return filename.includes(query);
+    });
+    
+    renderHistoryTable(filteredData);
 }
 
 async function updateProfile() {
@@ -463,19 +534,14 @@ async function updateProfile() {
     }
 
     try {
-        const res = await fetch('api/update_profile.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ password: newPassword })
-        });
-        const data = await res.json();
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
         
-        if (data.success) {
-            msgElement.innerText = "Password updated successfully!";
+        if (!error) {
+            msgElement.innerText = "Password updated securely in the cloud!";
             msgElement.className = "mt-4 text-[10px] font-bold uppercase tracking-widest text-emerald-600";
             document.getElementById('newPassword').value = ''; 
         } else {
-            msgElement.innerText = data.error || "Update failed.";
+            msgElement.innerText = error.message || "Update failed.";
             msgElement.className = "mt-4 text-[10px] font-bold uppercase tracking-widest text-red-500";
         }
     } catch (e) {
@@ -485,24 +551,30 @@ async function updateProfile() {
 }
 
 async function logoutUser() {
-    await fetch('api/logout.php');
+    await supabaseClient.auth.signOut();
     window.location.href = 'login.html';
 }
 
 async function saveResultToDatabase(filename, ops, memory, joules, kwh) {
     try {
-        await fetch('api/save_result.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                filename: filename,
-                ops: ops,
-                memory_peak_bytes: memory,
-                energy_joules: joules,
-                energy_kwh: kwh
-            })
-        });
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) {
+            console.warn("User not logged in. History will not be saved.");
+            return;
+        }
+
+        const { error } = await supabaseClient.from('history').insert([{
+            user_id: user.id,
+            filename: filename,
+            ops: ops,
+            peak_memory_bytes: memory,
+            energy_joules: joules,
+            energy_kwh: kwh
+        }]);
+
+        if (error) throw error;
+        console.log(`Successfully synced ${filename} data to Supabase.`);
     } catch (e) {
-        console.error("Failed to sync with database.");
+        console.error("Failed to sync with database:", e);
     }
 }
