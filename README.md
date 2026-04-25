@@ -1,96 +1,84 @@
-======================================================
-GreenCode Analyzer - Local Setup & Installation Guide
-======================================================
+<div align="center">
+  <h1 align="center"> GreenCode Analyzer</h1>
+  <p align="center">
+    <strong>Official User Manual & Operating Guide</strong>
+    <br />
+    <i>Provided by GILBERTO Systems</i>
+  </p>
+</div>
 
-PROJECT OVERVIEW
-----------------
-GreenCode Analyzer is a web-based, hardware-agnostic energy profiling tool. 
-It uses Lexical Analysis and a Web Worker-isolated Pyodide (WebAssembly) engine 
-to evaluate the algorithmic Time Complexity (Ops) and Space Complexity (Peak Memory) 
-of Python 3.x scripts, converting them into estimated Joules and kWh.
+<br />
 
-PREREQUISITES
--------------
-1. XAMPP (or any local server with Apache and MySQL/MariaDB)
-2. Google Chrome, Microsoft Edge, or Mozilla Firefox (Latest versions)
-3. The downloaded `pyodide_engine` files (if running completely offline).
+##  Introduction to GreenCode
 
-======================================================
-STEP 1: FOLDER STRUCTURE SETUP
-======================================================
-1. Open your XAMPP installation folder and navigate to the `htdocs` directory 
-   (Windows: C:\xampp\htdocs\ | Mac: /Applications/XAMPP/htdocs/).
-2. Create a new folder named `greencode`.
-3. Place all the project files into the `greencode` folder exactly like this:
+Welcome to the GreenCode Analyzer. This tool is designed to help Python developers understand the hidden environmental cost of their algorithms. By analyzing your code's CPU operations and memory allocation, GreenCode estimates the real-world energy consumption (Joules and kWh) of your scripts.
 
-htdocs/
-└── greencode/
-    ├── index.html          (Main dashboard)
-    ├── login.html          (Authentication page)
-    ├── app.js              (Frontend logic & UI)
-    ├── worker.js           (Web Worker thread & Python environment)
-    ├── pyodide_engine/     (Must contain pyodide.js and associated .wasm files)*
-    └── api/                (Backend PHP files)
-        ├── db.php
-        ├── get_history.php
-        ├── login.php
-        ├── logout.php
-        ├── save_result.php
-        ├── signup.php
-        └── update_profile.php
+---
 
-*Note on Pyodide: If you do not have the pyodide files downloaded locally, 
-open `worker.js` and change `importScripts("./pyodide_engine/pyodide.js");` 
-to `importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");`.
+##  1. Getting Started (Authentication)
 
-======================================================
-STEP 2: START LOCAL SERVERS
-======================================================
-1. Open the XAMPP Control Panel.
-2. Click "Start" next to the [Apache] module.
-3. Click "Start" next to the [MySQL] module.
-(Wait until both module backgrounds turn green).
+To keep your execution history private, GreenCode requires a secure account.
+1. Open the GreenCode application in your web browser.
+2. If this is your first time, click **"Create Account"**. Enter a valid email address and a secure password.
+3. If you already have an account, enter your credentials under the **"Login"** tab and click **"Enter Dashboard"**.
 
-======================================================
-STEP 3: DATABASE CONFIGURATION
-======================================================
-We need to create the database so the login and history features work.
+---
 
-1. Open your web browser and go to: http://localhost/phpmyadmin
-2. Click on the "Databases" tab at the top.
-3. Under "Create database", type: `greencode_db` and click "Create".
-4. On the left sidebar, click on your newly created `greencode_db`.
-5. Click on the "SQL" tab at the top of the screen.
-6. Copy and paste the following SQL code into the text box and click "Go" (bottom right):
+##  2. The Analyzer (Running Your Code)
 
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+The Analyzer is the core engine of the system. You have two ways to input your Python (`.py`) code:
 
-CREATE TABLE execution_results (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    filename VARCHAR(255) DEFAULT 'script.py',
-    ops INT NOT NULL,
-    peak_memory_bytes INT NOT NULL,
-    energy_joules DOUBLE NOT NULL,
-    energy_kwh DOUBLE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+### Method A: Live Execution Input
+Best for testing quick algorithms or snippets.
+1. Type or paste your Python code directly into the dark terminal window.
+2. Click the green **RUN & ANALYZE** button below the text box.
 
-======================================================
-STEP 4: RUNNING THE APPLICATION
-======================================================
-1. Open your web browser.
-2. Go to the following URL: http://localhost/greencode/login.html
-3. Click "Create Account" to register a new test user.
-4. Log in and start analyzing your Python scripts!
+### Method B: File Upload (Batch Processing)
+Best for evaluating complete scripts or multiple files at once.
+1. Drag and drop one or more `.py` files into the dashed **Dropzone** area, or click the button to browse your computer.
+2. Once the files are loaded, click the green **RUN & ANALYZE** button.
 
-TROUBLESHOOTING
----------------
-- Browser Cache Issues: If you update `app.js` or `worker.js` and the changes aren't showing up, Google Chrome might be using an old cached version. Press `F12` to open Developer Tools, right-click the browser's "Refresh" button, and select "Empty Cache and Hard Reload".
-- Database Errors: Ensure XAMPP's MySQL is running. If you used a custom MySQL password during your XAMPP installation, update the `$password = '';` variable inside `api/db.php`.
+###  Force Stop
+If you accidentally write an infinite loop or a script that takes too long, a red pulsing **FORCE STOP** button will appear in the top navigation bar. Clicking this will kill the background execution safely and log the partial data.
+
+---
+
+##  3. Understanding Your Results
+
+Once your code finishes executing, the dashboard will update with your telemetry data.
+
+### The Metrics Table
+* **Complexity (Ops):** The total number of mathematical and logical operations your CPU had to perform.
+* **Peak Memory (B):** The maximum amount of RAM (in Bytes) your script required to run.
+* **Total Joules (J):** The estimated kinetic energy cost of running the algorithm.
+* **Total kWh:** The real-world electricity footprint.
+
+### Real-Time Physics Model & Suggestions
+Click on any row in the Analysis Results table to view its detailed breakdown:
+* **The Chart:** Visualizes the CPU algorithmic load over time.
+* **Suggestions Panel:** GreenCode's suggestions system will warn you about heavy memory allocations, O(n²) nested loops, or congratulate you for writing a "Green-Compliant Algorithm."
+* Use the **Next (→)** and **Prev (←)** buttons to cycle through multiple uploaded files.
+
+---
+
+##  4. Managing Your History
+
+GreenCode automatically saves every successful execution (and manual Force Stops) to your secure cloud vault.
+
+1. Click the **My History** tab in the top navigation bar.
+2. Your past executions are grouped neatly by Date and Time.
+3. **Search:** Use the Search Bar in the top right corner to instantly filter your history for specific file names (e.g., type "quadratic" to find all tests run on your quadratic scripts).
+
+---
+
+##  5. Account Profile
+
+1. Click the **Profile** tab in the top navigation bar.
+2. Here you can verify your currently logged-in identity and email.
+3. To update your security credentials, type a new password into the input box and click **Save Changes**. 
+
+<br />
+
+<div align="center">
+  <i>For technical support or bug reports, please contact the GILBERTO Systems development team.</i>
+</div>

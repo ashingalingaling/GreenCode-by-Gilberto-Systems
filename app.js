@@ -15,6 +15,7 @@ let analysisResults = [];
 let currentDetailIndex = 0; 
 let energyChart;
 let activeWorkers = []; 
+let globalHistoryData = []; // NEW: Stores history for instant searching
 
 const C_CPU = 1.5e-9;
 const C_MEM = 2.25e-9;
@@ -423,6 +424,9 @@ async function loadProfileData() {
     }
 }
 
+// ==========================================
+// HISTORY FETCHING & SEARCHING
+// ==========================================
 async function fetchAccountHistory() {
     const tableBody = document.getElementById('dbHistoryTableBody');
     if(!tableBody) return;
@@ -443,52 +447,80 @@ async function fetchAccountHistory() {
 
         if (error) throw error;
 
-        tableBody.innerHTML = ''; 
-        if (data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution history found for this account.</td></tr>';
-            return;
-        }
-        
-        let currentGroup = ""; 
+        // Save the data globally so we can search it without asking Supabase again
+        globalHistoryData = data; 
+        renderHistoryTable(globalHistoryData);
 
-        data.forEach(row => {
-            const dateObj = new Date(row.created_at);
-            const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-            const groupKey = `${datePart} at ${timePart}`;
-
-            if (groupKey !== currentGroup) {
-                currentGroup = groupKey;
-                const headerTr = document.createElement('tr');
-                headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
-                headerTr.innerHTML = `
-                    <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
-                        ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
-                    </td>
-                `;
-                tableBody.appendChild(headerTr);
-            }
-
-            const tr = document.createElement('tr');
-            tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
-            const displayFilename = row.filename ? row.filename : "script.py"; 
-            
-            const preciseJoules = parseFloat(row.energy_joules);
-            const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
-            
-            tr.innerHTML = `
-                <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
-                <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
-                <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
-                <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
-                <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
-            `;
-            tableBody.appendChild(tr);
-        });
     } catch (e) {
         tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Error connecting to database.</td></tr>';
         console.error("Supabase fetch error:", e);
     }
+}
+
+function renderHistoryTable(dataToRender) {
+    const tableBody = document.getElementById('dbHistoryTableBody');
+    tableBody.innerHTML = ''; 
+    
+    if (!dataToRender || dataToRender.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution matching search found.</td></tr>';
+        return;
+    }
+    
+    let currentGroup = ""; 
+
+    dataToRender.forEach(row => {
+        const dateObj = new Date(row.created_at);
+        const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        const groupKey = `${datePart} at ${timePart}`;
+
+        // Only draw the date header if it's a new group
+        if (groupKey !== currentGroup) {
+            currentGroup = groupKey;
+            const headerTr = document.createElement('tr');
+            headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80";
+            headerTr.innerHTML = `
+                <td colspan="5" class="py-2 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest">
+                    ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
+                </td>
+            `;
+            tableBody.appendChild(headerTr);
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all";
+        const displayFilename = row.filename ? row.filename : "script.py"; 
+        
+        const preciseJoules = parseFloat(row.energy_joules);
+        const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
+        
+        tr.innerHTML = `
+            <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[150px]">${displayFilename}</td>
+            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
+            <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
+            <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
+            <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
+        `;
+        tableBody.appendChild(tr);
+    });
+}
+
+function searchHistory() {
+    const query = document.getElementById('historySearch').value.toLowerCase();
+    
+    // If search is empty, show everything
+    if (!query) {
+        renderHistoryTable(globalHistoryData);
+        return;
+    }
+    
+    // Filter the global array based on filename
+    const filteredData = globalHistoryData.filter(row => {
+        const filename = row.filename ? row.filename.toLowerCase() : "script.py";
+        return filename.includes(query);
+    });
+    
+    renderHistoryTable(filteredData);
 }
 
 async function updateProfile() {
