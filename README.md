@@ -77,3 +77,8 @@ GreenCode automatically saves every successful execution (and manual Force Stops
 2. Here you can verify your currently logged-in identity and email.
 3. To update your security credentials, type a new password into the input box and click **Save Changes**. 
 
+<br />
+
+<div align="center">
+  <i>For technical support or bug reports, please contact the GILBERTO Systems development team.</i>
+</div>
