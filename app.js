@@ -15,7 +15,7 @@ let analysisResults = [];
 let currentDetailIndex = 0; 
 let energyChart;
 let activeWorkers = []; 
-let globalHistoryData = []; // NEW: Stores history for instant searching
+let globalHistoryData = []; 
 
 const C_CPU = 1.5e-9;
 const C_MEM = 2.25e-9;
@@ -167,6 +167,7 @@ async function executeBatch(scriptArray) {
 
     analysisResults = scriptArray.map(script => ({
         name: script.name,
+        content: script.content, 
         ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
         status: 'RUNNING', 
         history: Array(25).fill(0) 
@@ -202,6 +203,7 @@ async function executeBatch(scriptArray) {
             const resState = analysisResults[i];
             
             if (finalRes.error) {
+                resState.status = 'ERROR'; 
                 resState.error = finalRes.error;
                 logToTerminal(`[${resState.name}] Error: ${finalRes.error}`, "ERR");
                 
@@ -289,7 +291,7 @@ function updateCarouselUI() {
     filenameEl.classList.add('text-gray-800');
 
     updateLiveUI(current);
-    generateSuggestions(current);
+    generateSuggestions(current); 
 }
 
 function prevDetail() {
@@ -311,26 +313,70 @@ function jumpToDetail(index) {
     updateCarouselUI();
 }
 
+// ==========================================
+// ANALYSIS ENGINE: PURE REGEX / TELEMETRY
+// ==========================================
 function generateSuggestions(data) {
-    let text = "";
-
-    if (data.bytes > 1000) text += "⚠️ High memory allocation detected. Avoid appending to large lists recursively. Try using Generators or List Comprehensions.\n\n";
-    if (data.ops > 5000) text += "⚠️ High CPU operations. Check for nested loops [ O(n^2) ]. Consider using dictionaries for lookups instead of iterating through lists.\n\n";
+    const suggestionEl = document.getElementById('suggestionText');
+    let htmlContent = "";
 
     if (data.status === 'RUNNING') {
-        text += "⏳ Compiling and executing... Live telemetry active.";
-    } else if (data.error) {
-        text += "🛑 " + data.error; 
-    } else if (data.ops === 0) {
-        text = "⚠️ No operations detected. Ensure you are using loops or assignments.";
-    } else {
-        if (text === "") text = "✅ Excellent! Your algorithm is highly efficient and Green-compliant.";
+        suggestionEl.innerHTML = `<div class="animate-pulse text-[#115e59] font-black uppercase tracking-widest text-center mt-8">
+            <span class="text-3xl block mb-2">⏳</span>Scanning Lines...<br>
+            <span class="text-[10px] text-gray-500">Static Telemetry active</span></div>`;
+        return; 
     }
 
-    const suggestionEl = document.getElementById('suggestionText');
-    suggestionEl.innerText = text.trim();
-    suggestionEl.classList.remove('text-gray-600');
-    suggestionEl.classList.add('text-black');
+    htmlContent += `<h4 class="font-black text-xs text-gray-400 uppercase tracking-widest border-b border-gray-300 pb-2 mb-3">Diagnosis: ${data.name}</h4>`;
+    htmlContent += `<ul class="space-y-3 text-sm font-medium text-gray-700">`;
+
+    let issues = 0;
+
+    // 1. Check for Forced Stops / Crashes (BUT DO NOT STOP THE SCAN!)
+    if (data.error) {
+        htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">🛑</span> <span><strong>Execution Halted:</strong> ${data.error}</span></li>`;
+        issues++; // Prevents the perfect score badge since it didn't finish naturally
+    } else if (data.ops === 0) {
+        htmlContent += `<li class="flex gap-2 items-start"><span class="text-yellow-500 text-lg leading-none">⚠️</span> <span><strong>Empty:</strong> No active logic detected.</span></li>`;
+        issues++;
+    }
+
+    // 2. STATIC ANALYSIS: Still scan the code lines regardless of how it ended
+    const code = data.content || ""; 
+    const lines = code.split('\n');
+    
+    lines.forEach((line, index) => {
+        const lineNum = index + 1; 
+        const trimmed = line.trim(); 
+
+        if ((trimmed.startsWith("for ") || trimmed.startsWith("while ")) && line.startsWith("        ")) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-orange-500 text-lg leading-none">🔍</span> <span><strong>Line ${lineNum}:</strong> Nested loop. Causes O(n²) complexity.</span></li>`; issues++;
+        }
+        if (trimmed.includes("time.sleep")) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">⏰</span> <span><strong>Line ${lineNum}:</strong> <code>time.sleep()</code> wastes CPU cycles.</span></li>`; issues++;
+        }
+        if (trimmed.startsWith("print(") && line.match(/^\s{4,}/)) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-orange-500 text-lg leading-none">🖨️</span> <span><strong>Line ${lineNum}:</strong> I/O print inside a loop is an energy bottleneck.</span></li>`; issues++;
+        }
+        if (trimmed.includes(".read()") || trimmed.includes(".readlines()")) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">📂</span> <span><strong>Line ${lineNum}:</strong> Loads full file to RAM. Iterate line-by-line instead.</span></li>`; issues++;
+        }
+        if (trimmed.match(/\[.*for.*in.*\]/)) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-blue-500 text-lg leading-none">💡</span> <span><strong>Line ${lineNum}:</strong> Great use of a List Comprehension!</span></li>`;
+        }
+        if (trimmed.includes("yield ")) {
+            htmlContent += `<li class="flex gap-2 items-start"><span class="text-blue-500 text-lg leading-none">🔋</span> <span><strong>Line ${lineNum}:</strong> Excellent use of a Generator (<code>yield</code>)!</span></li>`;
+        }
+    });
+
+    // 3. DYNAMIC TELEMETRY: Evaluate the partial ops/memory gathered before the force stop
+    if (data.ops > 50000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">📈</span> <span>High CPU Load (${data.ops.toLocaleString()} Ops).</span></li>`; issues++; }
+    if (data.bytes > 1000000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">💾</span> <span>Heavy Memory (${(data.bytes/1000000).toFixed(2)} MB).</span></li>`; issues++; }
+    
+    // 4. Final Verdict
+    if (issues === 0) { htmlContent += `<li class="flex gap-2 items-start pt-2 border-t border-gray-300 mt-2"><span class="text-emerald-600 text-lg leading-none">🏆</span> <span class="text-emerald-600 font-black tracking-wide">GREEN-COMPLIANT ALGORITHM</span></li>`; }
+    
+    suggestionEl.innerHTML = htmlContent + `</ul>`;
 }
 
 // ==========================================
@@ -447,7 +493,6 @@ async function fetchAccountHistory() {
 
         if (error) throw error;
 
-        // Save the data globally so we can search it without asking Supabase again
         globalHistoryData = data; 
         renderHistoryTable(globalHistoryData);
 
@@ -474,7 +519,6 @@ function renderHistoryTable(dataToRender) {
         const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
         const groupKey = `${datePart} at ${timePart}`;
 
-        // Only draw the date header if it's a new group
         if (groupKey !== currentGroup) {
             currentGroup = groupKey;
             const headerTr = document.createElement('tr');
@@ -508,13 +552,11 @@ function renderHistoryTable(dataToRender) {
 function searchHistory() {
     const query = document.getElementById('historySearch').value.toLowerCase();
     
-    // If search is empty, show everything
     if (!query) {
         renderHistoryTable(globalHistoryData);
         return;
     }
     
-    // Filter the global array based on filename
     const filteredData = globalHistoryData.filter(row => {
         const filename = row.filename ? row.filename.toLowerCase() : "script.py";
         return filename.includes(query);
