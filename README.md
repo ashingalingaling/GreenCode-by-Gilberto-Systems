@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 <div align="center">
   <h1 align="center"> GreenCode Analyzer</h1>
   <p align="center">
