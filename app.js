@@ -59,7 +59,7 @@ async function handleFiles(files) {
     const countDisplay = document.getElementById('fileCountDisplay');
     if (countDisplay) countDisplay.innerText = `${uploadedFiles.length} file(s) ready for analysis.`;
 
-    // NEW: Render the visual file previews!
+    // Render the visual file previews!
     const previewList = document.getElementById('filePreviewList');
     if (previewList) {
         previewList.innerHTML = ''; // Clear old previews
@@ -176,10 +176,24 @@ async function runFileAnalysis() {
 // REAL-TIME BATCH EXECUTION
 // ==========================================
 async function executeBatch(scriptArray) {
-    updateStatus("ANALYZING...", "text-yellow-300 animate-pulse");
-    document.getElementById('forceStopBtn').classList.remove('hidden'); 
-    const startTime = Date.now();
+    // 1. TRIGGER THE GLASSMORPHISM OVERLAY
+    const overlay = document.getElementById('bootOverlay');
+    const modal = document.getElementById('bootModal');
+    
+    if (overlay && modal) {
+        overlay.classList.remove('hidden');
+        // Tiny delay forces the browser to render the fade-in animation
+        setTimeout(() => {
+            overlay.classList.remove('opacity-0');
+            overlay.classList.add('opacity-100');
+            modal.classList.remove('scale-95');
+            modal.classList.add('scale-100');
+        }, 10);
+    }
 
+    updateStatus("BOOTING ENGINE...", "text-yellow-300 animate-pulse");
+    document.getElementById('forceStopBtn').classList.remove('hidden'); 
+    
     analysisResults = scriptArray.map(script => ({
         name: script.name,
         content: script.content, 
@@ -191,6 +205,28 @@ async function executeBatch(scriptArray) {
     currentDetailIndex = 0;
     renderAnalysisTable();
     updateCarouselUI();
+
+    logToTerminal("Initializing Instruction-Level Energy Model...", "INFO");
+    logToTerminal("Allocating WebAssembly Sandboxes...", "INFO");
+    logToTerminal("Injecting Telemetry Hooks...", "INFO");
+
+    // 2. THE ARTIFICIAL DELAY (Wait for 1.5 seconds while the bar fills)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // 3. DISSOLVE THE OVERLAY
+    if (overlay && modal) {
+        overlay.classList.remove('opacity-100');
+        overlay.classList.add('opacity-0');
+        modal.classList.remove('scale-100');
+        modal.classList.add('scale-95');
+        // Wait for the fade-out CSS animation to finish before hiding it completely
+        setTimeout(() => { overlay.classList.add('hidden'); }, 300); 
+    }
+
+    // 4. START ACTUAL EXECUTION
+    updateStatus("ANALYZING...", "text-blue-400 animate-pulse");
+    logToTerminal("Boot sequence complete. Starting execution...", "SUCCESS");
+    const startTime = Date.now();
 
     try {
         const tasks = scriptArray.map((script, index) => {
