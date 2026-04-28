@@ -55,8 +55,23 @@ async function handleFiles(files) {
         }
     }
     
+    // Update the text counter
     const countDisplay = document.getElementById('fileCountDisplay');
     if (countDisplay) countDisplay.innerText = `${uploadedFiles.length} file(s) ready for analysis.`;
+
+    // NEW: Render the visual file previews!
+    const previewList = document.getElementById('filePreviewList');
+    if (previewList) {
+        previewList.innerHTML = ''; // Clear old previews
+        uploadedFiles.forEach(file => {
+            // Generate a sleek green pill for each file
+            previewList.innerHTML += `
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-3 py-1 rounded-full border border-emerald-200 truncate max-w-[140px] shadow-sm flex items-center gap-1" title="${file.name}">
+                    📄 ${file.name}
+                </span>`;
+        });
+    }
+
     logToTerminal(`Loaded ${uploadedFiles.length} file(s) into memory.`, "INFO");
 }
 
