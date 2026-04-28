@@ -9,7 +9,7 @@
 
 <br />
 
-## Introduction to GreenCode
+##  Introduction to GreenCode
 
 Welcome to the GreenCode Analyzer. This tool is designed to help Python developers understand the hidden environmental cost of their algorithms. By analyzing your code's CPU operations and memory allocation, GreenCode estimates the real-world energy consumption (Joules and kWh) of your scripts.
 
@@ -56,7 +56,7 @@ Once your code finishes executing, the dashboard will update with your telemetry
 ### Real-Time Physics Model & Suggestions
 Click on any row in the Analysis Results table to view its detailed breakdown:
 * **The Chart:** Visualizes the CPU algorithmic load over time.
-* **Suggestions Panel:** GreenCode's automated AI reviewer will read your code and telemetry. It will warn you about heavy memory allocations, O(n²) nested loops, or congratulate you for writing a "Green-Compliant Algorithm."
+* **Suggestions Panel:** GreenCode's suggestions system will warn you about heavy memory allocations, O(n²) nested loops, or congratulate you for writing a "Green-Compliant Algorithm."
 * Use the **Next (→)** and **Prev (←)** buttons to cycle through multiple uploaded files.
 
 ---

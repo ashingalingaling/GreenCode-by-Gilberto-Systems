@@ -627,6 +627,116 @@ function searchHistory() {
     renderHistoryTable(filteredData);
 }
 
+function renderHistoryTable(dataToRender) {
+    const tableBody = document.getElementById('dbHistoryTableBody');
+    tableBody.innerHTML = ''; 
+    
+    if (!dataToRender || dataToRender.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution matching search found.</td></tr>';
+        return;
+    }
+    
+    let currentGroup = ""; 
+
+    dataToRender.forEach(row => {
+        const dateObj = new Date(row.created_at);
+        const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        const groupKey = `${datePart} at ${timePart}`;
+
+        // 1. Render the Date Header (Make the whole header clickable to Select All)
+        if (groupKey !== currentGroup) {
+            currentGroup = groupKey;
+            const headerTr = document.createElement('tr');
+            
+            // Styled to look clickable
+            headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80 cursor-pointer hover:bg-emerald-200/60 transition-colors select-none";
+            headerTr.innerHTML = `
+                <td colspan="5" class="py-3 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest relative">
+                    ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
+                    <span class="ml-2 text-emerald-600/50 text-[9px] font-bold tracking-wider">(CLICK TO SELECT ALL)</span>
+                    <input type="checkbox" class="hidden group-master-checkbox" data-group-master="${groupKey}">
+                </td>
+            `;
+
+            // When the header is clicked, toggle all rows under it
+            headerTr.onclick = function() {
+                const masterCb = this.querySelector('.group-master-checkbox');
+                masterCb.checked = !masterCb.checked;
+
+                const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
+                checkboxes.forEach(cb => {
+                    if (cb.checked !== masterCb.checked) {
+                        cb.closest('tr').click(); // Simulate a click on the row to trigger highlight
+                    }
+                });
+            };
+            tableBody.appendChild(headerTr);
+        }
+
+        // 2. Render the File Row (Make the whole row clickable)
+        const tr = document.createElement('tr');
+        tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all cursor-pointer select-none";
+        
+        const displayFilename = row.filename ? row.filename : "script.py"; 
+        const preciseJoules = parseFloat(row.energy_joules);
+        const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
+        
+        tr.innerHTML = `
+            <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[200px] relative">
+                <input type="checkbox" value="${row.id}" class="hidden history-checkbox" data-group="${groupKey}">
+                ${displayFilename}
+            </td>
+            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
+            <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
+            <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
+            <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
+        `;
+
+        // When the row is clicked, secretly check the hidden box and highlight the row!
+        tr.onclick = function() {
+            const cb = this.querySelector('.history-checkbox');
+            cb.checked = !cb.checked;
+
+            if (cb.checked) {
+                // Remove default colors
+                this.classList.remove('bg-white', 'hover:bg-emerald-50');
+                // Add the new high-contrast Blue selection theme
+                this.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500'); 
+            } else {
+                // Restore default colors
+                this.classList.add('bg-white', 'hover:bg-emerald-50');
+                // Remove the Blue theme
+                this.classList.remove('bg-blue-50', 'border-l-4', 'border-blue-500'); 
+            }
+        };
+
+        tableBody.appendChild(tr);
+    });
+}
+
+// Checkbox Utility: Select all items in a date group
+function toggleSelectGroup(masterCheckbox, groupKey) {
+    const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
+    checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+}
+
+function searchHistory() {
+    const query = document.getElementById('historySearch').value.toLowerCase();
+    
+    if (!query) {
+        renderHistoryTable(globalHistoryData);
+        return;
+    }
+    
+    const filteredData = globalHistoryData.filter(row => {
+        const filename = row.filename ? row.filename.toLowerCase() : "script.py";
+        return filename.includes(query);
+    });
+    
+    renderHistoryTable(filteredData);
+}
+
 async function updateProfile() {
     const newPassword = document.getElementById('newPassword').value;
     const msgElement = document.getElementById('profileMsg');
