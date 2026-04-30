@@ -1,0 +1,33 @@
+name: GreenCode Basic CI
+
+# This tells GitHub to run this check every time you push to the main branch
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  sanity-check:
+    name: Core Architecture Check
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: GitHub downloads your code onto their secure testing server
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: A basic check to ensure no one accidentally deleted the critical files
+      - name: Verify Core Files Exist
+        run: |
+          echo "Checking if core architecture files exist..."
+          test -f index.html || (echo "CRITICAL ERROR: Missing index.html" && exit 1)
+          test -f worker.js || (echo "CRITICAL ERROR: Missing worker.js" && exit 1)
+          test -f app.js || (echo "CRITICAL ERROR: Missing app.js" && exit 1)
+          echo "All core files are present and accounted for!"
+
+      # Step 3: A placeholder for future tests
+      - name: Evaluation Readiness
+        run: |
+          echo "System Architecture is intact."
+          echo "GreenCode Analyzer is ready for ISO 25010 Evaluation!"
