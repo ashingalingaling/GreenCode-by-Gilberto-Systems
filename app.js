@@ -195,12 +195,14 @@ async function executeBatch(scriptArray) {
     document.getElementById('forceStopBtn').classList.remove('hidden'); 
     
     analysisResults = scriptArray.map(script => ({
-        name: script.name,
-        content: script.content, 
-        ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
-        status: 'RUNNING', 
-        history: Array(25).fill(0) 
-    }));
+    name: script.name,
+    content: script.content, 
+    ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
+    // NEW properties for the UI breakdown:
+    duration: 0, cpu_joules: 0, mem_joules: 0, base_joules: C_BASE,
+    status: 'RUNNING', 
+    history: Array(25).fill(0) 
+}));
     
     currentDetailIndex = 0;
     renderAnalysisTable();
@@ -231,19 +233,29 @@ async function executeBatch(scriptArray) {
     try {
         const tasks = scriptArray.map((script, index) => {
             return runWorkerTask(script.name, script.content, (ops, mem) => {
-                const res = analysisResults[index];
-                const t_exec = (Date.now() - startTime) / 1000;
-                
-                res.ops = ops;
-                res.bytes = mem;
-                res.joules = (ops * C_CPU) + (mem * t_exec * C_MEM) + C_BASE;
-                res.kwh = res.joules / 3600000;
+            const res = analysisResults[index];
+            const t_exec = (Date.now() - startTime) / 1000;
+            
+            res.ops = ops;
+            res.bytes = mem;
 
-                res.history.shift();
-                res.history.push(ops);
+            // ----------------------------------------------------
+            // Calculate the breakdown LIVE during the loop
+            // ----------------------------------------------------
 
-                updateTableRow(index, res);
-                if (currentDetailIndex === index) updateLiveUI(res);
+            res.cpu_joules = res.ops * C_CPU;
+            res.mem_joules = res.bytes * t_exec * C_MEM;
+
+            // Sum them up for the total
+            res.joules = res.cpu_joules + res.mem_joules + res.base_joules;
+            res.kwh = res.joules / 3600000;
+            // ----------------------------------------------------
+
+            res.history.shift();
+            res.history.push(ops);
+
+            updateTableRow(index, res);
+            if (currentDetailIndex === index) updateLiveUI(res);
             });
         });
 
@@ -264,11 +276,16 @@ async function executeBatch(scriptArray) {
                 }
 
             } else {
-                resState.status = 'COMPLETED'; 
                 resState.ops = finalRes.ops || resState.ops;
                 resState.bytes = finalRes.memory_peak_bytes || resState.bytes;
-                const t_exec_final = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
-                resState.joules = (resState.ops * C_CPU) + (resState.bytes * t_exec_final * C_MEM) + C_BASE;
+                resState.duration = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
+
+                // Calculate the individual components
+                resState.cpu_joules = resState.ops * C_CPU;
+                resState.mem_joules = resState.bytes * resState.duration * C_MEM;
+
+                // Sum them up for the final metric
+                resState.joules = resState.cpu_joules + resState.mem_joules + resState.base_joules;
                 resState.kwh = resState.joules / 3600000;
                 
                 resState.history.shift();
@@ -326,12 +343,16 @@ function updateLiveUI(res) {
     document.getElementById('detailJoules').innerText = `${res.joules.toFixed(6)} J`;
     document.getElementById('detailOps').innerText = res.ops;
 
+    // Injecting the breakdown data
+    document.getElementById('breakdownCpu').innerText = `${res.cpu_joules.toFixed(6)} J`;
+    document.getElementById('breakdownMem').innerText = `${res.mem_joules.toFixed(6)} J`;
+    document.getElementById('breakdownBase').innerText = `${res.base_joules.toFixed(6)} J`;
+
     if (energyChart) {
         energyChart.data.datasets[0].data = res.history;
         energyChart.update('none'); 
     }
 }
-
 function updateCarouselUI() {
     if (analysisResults.length === 0) return;
     const current = analysisResults[currentDetailIndex];
