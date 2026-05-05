@@ -35,7 +35,7 @@ To run the GreenCode Analyzer locally, you must serve it through a local web ser
 
 2. **Start a Local Development Server:**
    You can use any local server. Here are two easy methods:
-   * **Using Python:** Run `python -m http.server 8000` in your terminal, then open `http://localhost:8000` in your browser.
+   * **Using Python:** Run `cd /workspace/greencode-project` in your terminal, and then `python -m http.server 8000`, then open `http://localhost:8000` in your browser.
    * **Using VS Code:** Install the "Live Server" extension, right-click `index.html`, and select "Open with Live Server".
 
 ## How to Use (Onboarding)
