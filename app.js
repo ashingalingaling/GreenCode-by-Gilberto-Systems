@@ -55,16 +55,13 @@ async function handleFiles(files) {
         }
     }
     
-    // Update the text counter
     const countDisplay = document.getElementById('fileCountDisplay');
     if (countDisplay) countDisplay.innerText = `${uploadedFiles.length} file(s) ready for analysis.`;
 
-    // Render the visual file previews!
     const previewList = document.getElementById('filePreviewList');
     if (previewList) {
-        previewList.innerHTML = ''; // Clear old previews
+        previewList.innerHTML = ''; 
         uploadedFiles.forEach(file => {
-            // Generate a sleek green pill for each file
             previewList.innerHTML += `
                 <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-3 py-1 rounded-full border border-emerald-200 truncate max-w-[140px] shadow-sm flex items-center gap-1" title="${file.name}">
                     📄 ${file.name}
@@ -80,7 +77,8 @@ async function handleFiles(files) {
 // ==========================================
 function instrumentPythonCodeJS(rawCode) {
     const lines = rawCode.split('\n');
-    let instrumentedCode = ['__tracker = {"ops": 0, "current_mem": 0, "peak_mem": 0}'];
+    // FIXED: Added "last_sync": 0 to the tracker for the worker throttle
+    let instrumentedCode = ['__tracker = {"ops": 0, "current_mem": 0, "peak_mem": 0, "last_sync": 0}'];
     
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
@@ -176,13 +174,11 @@ async function runFileAnalysis() {
 // REAL-TIME BATCH EXECUTION
 // ==========================================
 async function executeBatch(scriptArray) {
-    // 1. TRIGGER THE GLASSMORPHISM OVERLAY
     const overlay = document.getElementById('bootOverlay');
     const modal = document.getElementById('bootModal');
     
     if (overlay && modal) {
         overlay.classList.remove('hidden');
-        // Tiny delay forces the browser to render the fade-in animation
         setTimeout(() => {
             overlay.classList.remove('opacity-0');
             overlay.classList.add('opacity-100');
@@ -197,7 +193,7 @@ async function executeBatch(scriptArray) {
     analysisResults = scriptArray.map(script => ({
         name: script.name,
         content: script.content, 
-        ops: 0, bytes: 0, joules: 0, kwh: 0, error: null,
+        ops: 0, bytes: 0, joules: 0, kwh: 0, cpu_joules: 0, mem_joules: 0, error: null,
         status: 'RUNNING', 
         history: Array(25).fill(0) 
     }));
@@ -210,20 +206,16 @@ async function executeBatch(scriptArray) {
     logToTerminal("Allocating WebAssembly Sandboxes...", "INFO");
     logToTerminal("Injecting Telemetry Hooks...", "INFO");
 
-    // 2. THE ARTIFICIAL DELAY (Wait for 1.5 seconds while the bar fills)
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // 3. DISSOLVE THE OVERLAY
     if (overlay && modal) {
         overlay.classList.remove('opacity-100');
         overlay.classList.add('opacity-0');
         modal.classList.remove('scale-100');
         modal.classList.add('scale-95');
-        // Wait for the fade-out CSS animation to finish before hiding it completely
         setTimeout(() => { overlay.classList.add('hidden'); }, 300); 
     }
 
-    // 4. START ACTUAL EXECUTION
     updateStatus("ANALYZING...", "text-blue-400 animate-pulse");
     logToTerminal("Boot sequence complete. Starting execution...", "SUCCESS");
     const startTime = Date.now();
@@ -237,17 +229,12 @@ async function executeBatch(scriptArray) {
             res.ops = ops;
             res.bytes = mem;
 
-            // ----------------------------------------------------
-            // Calculate the breakdown LIVE during the loop
-            // ----------------------------------------------------
-
             res.cpu_joules = res.ops * C_CPU;
             res.mem_joules = res.bytes * t_exec * C_MEM;
 
-            // Sum them up for the total
-            res.joules = res.cpu_joules + res.mem_joules + res.base_joules;
+            // FIXED: Using C_BASE constant to prevent UI crash
+            res.joules = res.cpu_joules + res.mem_joules + C_BASE;
             res.kwh = res.joules / 3600000;
-            // ----------------------------------------------------
 
             res.history.shift();
             res.history.push(ops);
@@ -279,12 +266,11 @@ async function executeBatch(scriptArray) {
                 resState.bytes = finalRes.memory_peak_bytes || resState.bytes;
                 resState.duration = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
 
-                // Calculate the individual components
                 resState.cpu_joules = resState.ops * C_CPU;
                 resState.mem_joules = resState.bytes * resState.duration * C_MEM;
 
-                // Sum them up for the final metric
-                resState.joules = resState.cpu_joules + resState.mem_joules + resState.base_joules;
+                // FIXED: Using C_BASE constant
+                resState.joules = resState.cpu_joules + resState.mem_joules + C_BASE;
                 resState.kwh = resState.joules / 3600000;
                 
                 resState.history.shift();
@@ -342,16 +328,18 @@ function updateLiveUI(res) {
     document.getElementById('detailJoules').innerText = `${res.joules.toFixed(6)} J`;
     document.getElementById('detailOps').innerText = res.ops;
 
-    // Injecting the breakdown data
     document.getElementById('breakdownCpu').innerText = `${res.cpu_joules.toFixed(6)} J`;
     document.getElementById('breakdownMem').innerText = `${res.mem_joules.toFixed(6)} J`;
-    document.getElementById('breakdownBase').innerText = `${res.base_joules.toFixed(6)} J`;
+    
+    // FIXED: Formats C_BASE constant properly
+    document.getElementById('breakdownBase').innerText = `${C_BASE.toFixed(6)} J`;
 
     if (energyChart) {
         energyChart.data.datasets[0].data = res.history;
         energyChart.update('none'); 
     }
 }
+
 function updateCarouselUI() {
     if (analysisResults.length === 0) return;
     const current = analysisResults[currentDetailIndex];
@@ -403,16 +391,14 @@ function generateSuggestions(data) {
 
     let issues = 0;
 
-    // 1. Check for Forced Stops / Crashes (BUT DO NOT STOP THE SCAN!)
     if (data.error) {
         htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">🛑</span> <span><strong>Execution Halted:</strong> ${data.error}</span></li>`;
-        issues++; // Prevents the perfect score badge since it didn't finish naturally
+        issues++; 
     } else if (data.ops === 0) {
         htmlContent += `<li class="flex gap-2 items-start"><span class="text-yellow-500 text-lg leading-none">⚠️</span> <span><strong>Empty:</strong> No active logic detected.</span></li>`;
         issues++;
     }
 
-    // 2. STATIC ANALYSIS: Still scan the code lines regardless of how it ended
     const code = data.content || ""; 
     const lines = code.split('\n');
     
@@ -440,11 +426,9 @@ function generateSuggestions(data) {
         }
     });
 
-    // 3. DYNAMIC TELEMETRY: Evaluate the partial ops/memory gathered before the force stop
     if (data.ops > 50000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">📈</span> <span>High CPU Load (${data.ops.toLocaleString()} Ops).</span></li>`; issues++; }
     if (data.bytes > 1000000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">💾</span> <span>Heavy Memory (${(data.bytes/1000000).toFixed(2)} MB).</span></li>`; issues++; }
     
-    // 4. Final Verdict
     if (issues === 0) { htmlContent += `<li class="flex gap-2 items-start pt-2 border-t border-gray-300 mt-2"><span class="text-emerald-600 text-lg leading-none">🏆</span> <span class="text-emerald-600 font-black tracking-wide">GREEN-COMPLIANT ALGORITHM</span></li>`; }
     
     suggestionEl.innerHTML = htmlContent + `</ul>`;
@@ -571,107 +555,6 @@ async function fetchAccountHistory() {
         tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-red-500 italic font-bold">Error connecting to database.</td></tr>';
         console.error("Supabase fetch error:", e);
     }
-    
-    const filteredData = globalHistoryData.filter(row => {
-        const filename = row.filename ? row.filename.toLowerCase() : "script.py";
-        return filename.includes(query);
-    });
-    
-    renderHistoryTable(filteredData);
-}
-
-function renderHistoryTable(dataToRender) {
-    const tableBody = document.getElementById('dbHistoryTableBody');
-    tableBody.innerHTML = ''; 
-    
-    if (!dataToRender || dataToRender.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center opacity-50 italic">No execution matching search found.</td></tr>';
-        return;
-    }
-    
-    let currentGroup = ""; 
-
-    dataToRender.forEach(row => {
-        const dateObj = new Date(row.created_at);
-        const datePart = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        const groupKey = `${datePart} at ${timePart}`;
-
-        // 1. Render the Date Header (Make the whole header clickable to Select All)
-        if (groupKey !== currentGroup) {
-            currentGroup = groupKey;
-            const headerTr = document.createElement('tr');
-            
-            // Styled to look clickable
-            headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80 cursor-pointer hover:bg-emerald-200/60 transition-colors select-none";
-            headerTr.innerHTML = `
-                <td colspan="5" class="py-3 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest relative">
-                    ⏱ Computed on: <span class="text-emerald-700">${groupKey}</span>
-                    <span class="ml-2 text-emerald-600/50 text-[9px] font-bold tracking-wider">(CLICK TO SELECT ALL)</span>
-                    <input type="checkbox" class="hidden group-master-checkbox" data-group-master="${groupKey}">
-                </td>
-            `;
-
-            // When the header is clicked, toggle all rows under it
-            headerTr.onclick = function() {
-                const masterCb = this.querySelector('.group-master-checkbox');
-                masterCb.checked = !masterCb.checked;
-
-                const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
-                checkboxes.forEach(cb => {
-                    if (cb.checked !== masterCb.checked) {
-                        cb.closest('tr').click(); // Simulate a click on the row to trigger highlight
-                    }
-                });
-            };
-            tableBody.appendChild(headerTr);
-        }
-
-        // 2. Render the File Row (Make the whole row clickable)
-        const tr = document.createElement('tr');
-        tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all cursor-pointer select-none";
-        
-        const displayFilename = row.filename ? row.filename : "script.py"; 
-        const preciseJoules = parseFloat(row.energy_joules);
-        const preciseKwh = parseFloat(row.energy_kwh) || (preciseJoules / 3600000);
-        
-        tr.innerHTML = `
-            <td class="py-3 px-4 text-gray-800 font-bold text-xs truncate max-w-[200px] relative">
-                <input type="checkbox" value="${row.id}" class="hidden history-checkbox" data-group="${groupKey}">
-                ${displayFilename}
-            </td>
-            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Ops</td>
-            <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
-            <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
-            <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
-        `;
-
-        // When the row is clicked, secretly check the hidden box and highlight the row!
-        tr.onclick = function() {
-            const cb = this.querySelector('.history-checkbox');
-            cb.checked = !cb.checked;
-
-            if (cb.checked) {
-                // Remove default colors
-                this.classList.remove('bg-white', 'hover:bg-emerald-50');
-                // Add the new high-contrast Blue selection theme
-                this.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500'); 
-            } else {
-                // Restore default colors
-                this.classList.add('bg-white', 'hover:bg-emerald-50');
-                // Remove the Blue theme
-                this.classList.remove('bg-blue-50', 'border-l-4', 'border-blue-500'); 
-            }
-        };
-
-        tableBody.appendChild(tr);
-    });
-}
-
-// Checkbox Utility: Select all items in a date group
-function toggleSelectGroup(masterCheckbox, groupKey) {
-    const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
-    checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
 }
 
 function searchHistory() {
@@ -707,12 +590,10 @@ function renderHistoryTable(dataToRender) {
         const timePart = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
         const groupKey = `${datePart} at ${timePart}`;
 
-        // 1. Render the Date Header (Make the whole header clickable to Select All)
         if (groupKey !== currentGroup) {
             currentGroup = groupKey;
             const headerTr = document.createElement('tr');
             
-            // Styled to look clickable
             headerTr.className = "bg-emerald-100/60 border-y border-emerald-200/80 cursor-pointer hover:bg-emerald-200/60 transition-colors select-none";
             headerTr.innerHTML = `
                 <td colspan="5" class="py-3 px-4 text-emerald-900 font-black text-[11px] uppercase tracking-widest relative">
@@ -722,7 +603,6 @@ function renderHistoryTable(dataToRender) {
                 </td>
             `;
 
-            // When the header is clicked, toggle all rows under it
             headerTr.onclick = function() {
                 const masterCb = this.querySelector('.group-master-checkbox');
                 masterCb.checked = !masterCb.checked;
@@ -730,14 +610,13 @@ function renderHistoryTable(dataToRender) {
                 const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
                 checkboxes.forEach(cb => {
                     if (cb.checked !== masterCb.checked) {
-                        cb.closest('tr').click(); // Simulate a click on the row to trigger highlight
+                        cb.closest('tr').click(); 
                     }
                 });
             };
             tableBody.appendChild(headerTr);
         }
 
-        // 2. Render the File Row (Make the whole row clickable)
         const tr = document.createElement('tr');
         tr.className = "bg-white border-b border-gray-100 hover:bg-emerald-50 transition-all cursor-pointer select-none";
         
@@ -756,20 +635,15 @@ function renderHistoryTable(dataToRender) {
             <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
         `;
 
-        // When the row is clicked, secretly check the hidden box and highlight the row!
         tr.onclick = function() {
             const cb = this.querySelector('.history-checkbox');
             cb.checked = !cb.checked;
 
             if (cb.checked) {
-                // Remove default colors
                 this.classList.remove('bg-white', 'hover:bg-emerald-50');
-                // Add the new high-contrast Blue selection theme
                 this.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500'); 
             } else {
-                // Restore default colors
                 this.classList.add('bg-white', 'hover:bg-emerald-50');
-                // Remove the Blue theme
                 this.classList.remove('bg-blue-50', 'border-l-4', 'border-blue-500'); 
             }
         };
@@ -778,26 +652,9 @@ function renderHistoryTable(dataToRender) {
     });
 }
 
-// Checkbox Utility: Select all items in a date group
 function toggleSelectGroup(masterCheckbox, groupKey) {
     const checkboxes = document.querySelectorAll(`.history-checkbox[data-group="${groupKey}"]`);
     checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
-}
-
-function searchHistory() {
-    const query = document.getElementById('historySearch').value.toLowerCase();
-    
-    if (!query) {
-        renderHistoryTable(globalHistoryData);
-        return;
-    }
-    
-    const filteredData = globalHistoryData.filter(row => {
-        const filename = row.filename ? row.filename.toLowerCase() : "script.py";
-        return filename.includes(query);
-    });
-    
-    renderHistoryTable(filteredData);
 }
 
 async function updateProfile() {
@@ -859,7 +716,6 @@ async function saveResultToDatabase(filename, ops, memory, joules, kwh) {
 // ==========================================
 // CSV EXPORT & BATCH DELETION
 // ==========================================
-
 function exportSelectedCSV() {
     const checkboxes = document.querySelectorAll('.history-checkbox:checked');
     if (checkboxes.length === 0) return alert("Please select at least one record to export.");
@@ -896,7 +752,6 @@ async function deleteSelectedHistory() {
 
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
 
-    // Visual Loading State
     const tableBody = document.getElementById('dbHistoryTableBody');
     tableBody.innerHTML = '<tr><td colspan="5" class="py-8 text-center font-bold text-emerald-600 animate-pulse">Syncing deletion with Supabase...</td></tr>';
 
@@ -912,7 +767,7 @@ async function deleteSelectedHistory() {
 
     } catch (error) {
         console.error("Error deleting records:", error);
-        await fetchAccountHistory(); // Instantly restore the UI if the network drops
+        await fetchAccountHistory(); 
         alert("Failed to delete records. Check console for details.");
     }
 }

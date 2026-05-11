@@ -61,13 +61,19 @@ final_peak_mem = 0
 try:
     sys.setrecursionlimit(5000)
     
+    # FIXED: Added import time and the 50ms throttle check
     proxy_definitions = """
-import js  # FIXED: Moved inside the proxy block so the exec() scope can see it
+import js  
+import time
 
 def _check_telemetry():
-    # Stream data to the frontend every 250 operations
-    if __tracker['ops'] % 250 == 0:
-        js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+    # Only check the system clock every 100 ops to keep overhead low
+    if __tracker['ops'] % 100 == 0:
+        current_time = time.time()
+        # Only send data to frontend a maximum of once every 50ms
+        if current_time - __tracker['last_sync'] > 0.05:
+            js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+            __tracker['last_sync'] = current_time
 
 def _update_mem(bytes_added):
     global __tracker
