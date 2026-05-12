@@ -219,7 +219,9 @@ async function executeBatch(scriptArray) {
     updateStatus("ANALYZING...", "text-blue-400 animate-pulse");
     logToTerminal("Boot sequence complete. Starting execution...", "SUCCESS");
     const startTime = Date.now();
-
+    // ==========================================
+    // THE FORMULA
+    // ==========================================
     try {
         const tasks = scriptArray.map((script, index) => {
             return runWorkerTask(script.name, script.content, (ops, mem) => {
@@ -232,7 +234,6 @@ async function executeBatch(scriptArray) {
             res.cpu_joules = res.ops * C_CPU;
             res.mem_joules = res.bytes * t_exec * C_MEM;
 
-            // FIXED: Using C_BASE constant to prevent UI crash
             res.joules = res.cpu_joules + res.mem_joules + C_BASE;
             res.kwh = res.joules / 3600000;
 
@@ -426,9 +427,19 @@ function generateSuggestions(data) {
         }
     });
 
-    if (data.ops > 50000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">📈</span> <span>High CPU Load (${data.ops.toLocaleString()} Ops).</span></li>`; issues++; }
-    if (data.bytes > 1000000) { htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">💾</span> <span>Heavy Memory (${(data.bytes/1000000).toFixed(2)} MB).</span></li>`; issues++; }
-    
+    const validLines = lines.filter(line => line.trim() !== "" && !line.trim().startsWith("#")).length;
+    const dynamicOpsThreshold = Math.max(5000, validLines * 500);
+    const dynamicMemThreshold = Math.max(100000, validLines * 10000);
+
+    if (data.ops > dynamicOpsThreshold) { 
+        htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">📈</span> <span>High CPU Load (${data.ops.toLocaleString()} Ops across ${validLines} lines).</span></li>`; 
+        issues++; 
+    }
+    if (data.bytes > dynamicMemThreshold) { 
+        htmlContent += `<li class="flex gap-2 items-start"><span class="text-red-500 text-lg leading-none">💾</span> <span>Heavy Memory Load (${(data.bytes/1000000).toFixed(2)} MB across ${validLines} lines).</span></li>`; 
+        issues++; 
+    }
+
     if (issues === 0) { htmlContent += `<li class="flex gap-2 items-start pt-2 border-t border-gray-300 mt-2"><span class="text-emerald-600 text-lg leading-none">🏆</span> <span class="text-emerald-600 font-black tracking-wide">GREEN-COMPLIANT ALGORITHM</span></li>`; }
     
     suggestionEl.innerHTML = htmlContent + `</ul>`;
