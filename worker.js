@@ -16,6 +16,7 @@ self.sendTelemetry = (ops, peak_mem, line_ops_str, line_mem_str) => {
 
 async function loadPyodideEngine() {
     try {
+        // 2. Initialize it using the CDN's index URL
         pyodideEngine = await loadPyodide({ 
             indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" 
         });
@@ -62,17 +63,19 @@ final_line_mem = {}
 try:
     sys.setrecursionlimit(5000)
     
-    # === START TRIPLE QUOTE ===
+    # FIXED: Added import time and the 50ms throttle check
     proxy_definitions = """
-import js
-import json
+import js  
+import time
 
 def _check_telemetry():
-    # Stream data AND traces to the frontend every 250 operations
-    if __tracker['ops'] % 250 == 0:
-        ops_json = json.dumps(__tracker.get('line_ops', {}))
-        mem_json = json.dumps(__tracker.get('line_memory', {}))
-        js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'], ops_json, mem_json)
+    # Only check the system clock every 100 ops to keep overhead low
+    if __tracker['ops'] % 100 == 0:
+        current_time = time.time()
+        # Only send data to frontend a maximum of once every 50ms
+        if current_time - __tracker['last_sync'] > 0.05:
+            js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+            __tracker['last_sync'] = current_time
 
 def _update_mem(bytes_added):
     global __tracker

@@ -1,6 +1,19 @@
-# GreenCode Analyzer
+<div align="center">
+  <h1 align="center"> GreenCode Analyzer</h1>
+  <p align="center">
+    <strong>Official User Manual & Operating Guide</strong>
+    <br />
+    <i>Provided by GILBERTO Systems</i>
+  </p>
+</div>
 
-A web-based runtime energy profiling system designed to analyze and visualize the energy consumption of Python algorithms. Built by Group GILBERTO (FEU Institute of Technology), this tool utilizes an Instruction-Level Energy Model (ILEM) to estimate thermodynamic energy (Joules and kWh) without relying on physical hardware sensors.
+<br />
+
+##  Introduction to GreenCode
+
+Welcome to the GreenCode Analyzer. This tool is designed to help Python developers understand the hidden environmental cost of their algorithms. By analyzing your code's CPU operations and memory allocation, GreenCode estimates the real-world energy consumption (Joules and kWh) of your scripts.
+
+---
 
 ## Getting Started (How to Run)
 
@@ -22,7 +35,7 @@ To run the GreenCode Analyzer locally, you must serve it through a local web ser
 
 2. **Start a Local Development Server:**
    You can use any local server. Here are two easy methods:
-   * **Using Python:** Run `python -m http.server 8000` in your terminal, then open `http://localhost:8000` in your browser.
+   * **Using Python:** Run `cd /workspace/greencode-project` in your terminal, and then `python -m http.server 8000`, then open `http://localhost:8000` in your browser.
    * **Using VS Code:** Install the "Live Server" extension, right-click `index.html`, and select "Open with Live Server".
 
 ## How to Use (Onboarding)
@@ -48,3 +61,7 @@ The GreenCode Analyzer is designed to give you real-time feedback on algorithmic
 * Arnold Lino B. Cabasag
 * Simione Hingano Finau
 * John Paul Mathew R. Lacsamana
+
+<div align="center">
+  <i>For technical support or bug reports, please contact the GILBERTO Systems development team.</i>
+</div>
