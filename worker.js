@@ -1,9 +1,10 @@
 // worker.js
 
+// 1. Pull the Pyodide engine from the CDN instead of a local folder
 try {
-    importScripts("./pyodide_engine/pyodide.js"); 
+    importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"); 
 } catch (e) {
-    postMessage({ type: "ERROR", error: "404: Pyodide not found." });
+    postMessage({ type: "ERROR", error: "404: Pyodide CDN could not be reached." });
 }
 
 let pyodideEngine = null;
@@ -15,7 +16,10 @@ self.sendTelemetry = (ops, peak_mem) => {
 
 async function loadPyodideEngine() {
     try {
-        pyodideEngine = await loadPyodide({ indexURL: "./pyodide_engine/" });
+        // 2. Initialize it using the CDN's index URL
+        pyodideEngine = await loadPyodide({ 
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" 
+        });
         postMessage({ type: "READY" });
     } catch (err) {
         postMessage({ type: "ERROR", error: "Boot Failed: " + err.message });
@@ -57,13 +61,19 @@ final_peak_mem = 0
 try:
     sys.setrecursionlimit(5000)
     
+    # FIXED: Added import time and the 50ms throttle check
     proxy_definitions = """
-import js  # FIXED: Moved inside the proxy block so the exec() scope can see it
+import js  
+import time
 
 def _check_telemetry():
-    # Stream data to the frontend every 250 operations
-    if __tracker['ops'] % 250 == 0:
-        js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+    # Only check the system clock every 100 ops to keep overhead low
+    if __tracker['ops'] % 100 == 0:
+        current_time = time.time()
+        # Only send data to frontend a maximum of once every 50ms
+        if current_time - __tracker['last_sync'] > 0.05:
+            js.sendTelemetry(__tracker['ops'], __tracker['peak_mem'])
+            __tracker['last_sync'] = current_time
 
 def _update_mem(bytes_added):
     global __tracker
@@ -72,8 +82,8 @@ def _update_mem(bytes_added):
         __tracker['peak_mem'] = __tracker['current_mem']
 
 class GreenList(list):
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, iterable=()):
+        super().__init__(iterable)
         self._size = 56 + (len(self) * 8)
         _update_mem(self._size)
         
