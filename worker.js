@@ -9,9 +9,9 @@ try {
 
 let pyodideEngine = null;
 
-// --- UPGRADED: Expose telemetry function to accept live traces ---
-self.sendTelemetry = (ops, peak_mem, line_ops_str, line_mem_str) => {
-    postMessage({ type: "TELEMETRY", ops: ops, mem: peak_mem, line_ops: line_ops_str, line_mem: line_mem_str });
+// Expose a telemetry function to the Python environment
+self.sendTelemetry = (ops, peak_mem) => {
+    postMessage({ type: "TELEMETRY", ops: ops, mem: peak_mem });
 };
 
 async function loadPyodideEngine() {
@@ -57,8 +57,6 @@ start_time = time.time()
 error_msg = ""
 final_ops = 0
 final_peak_mem = 0
-final_line_ops = {}
-final_line_mem = {}
 
 try:
     sys.setrecursionlimit(5000)
@@ -82,17 +80,10 @@ def _update_mem(bytes_added):
     __tracker['current_mem'] += bytes_added
     if __tracker['current_mem'] > __tracker['peak_mem']:
         __tracker['peak_mem'] = __tracker['current_mem']
-        
-    active_line = __tracker.get('active_line', 'unknown')
-    if active_line != 'unknown' and bytes_added > 0:
-        if 'line_memory' not in __tracker:
-            __tracker['line_memory'] = {}
-        __tracker['line_memory'].setdefault(active_line, 0)
-        __tracker['line_memory'][active_line] += bytes_added
 
 class GreenList(list):
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, iterable=()):
+        super().__init__(iterable)
         self._size = 56 + (len(self) * 8)
         _update_mem(self._size)
         
@@ -110,7 +101,6 @@ class GreenList(list):
         super().clear()
         _update_mem(-freed_bytes)
 """
-    # === END TRIPLE QUOTE ===
 
     full_code = proxy_definitions + "\\n" + ${JSON.stringify(userCode)}
     
@@ -124,8 +114,6 @@ class GreenList(list):
     if '__tracker' in exec_globals:
         final_ops = exec_globals['__tracker'].get('ops', 0)
         final_peak_mem = exec_globals['__tracker'].get('peak_mem', 0)
-        final_line_ops = exec_globals['__tracker'].get('line_ops', {})
-        final_line_mem = exec_globals['__tracker'].get('line_memory', {})
 
 except Exception as e:
     error_msg = str(e)
@@ -139,9 +127,7 @@ result = {
     "error": error_msg,
     "ops": final_ops, 
     "memory_peak_bytes": final_peak_mem, 
-    "duration_sec": end_time - start_time,
-    "line_ops": final_line_ops,
-    "line_memory": final_line_mem
+    "duration_sec": end_time - start_time
 }
 json.dumps(result)
 `;
