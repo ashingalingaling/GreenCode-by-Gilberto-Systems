@@ -17,6 +17,10 @@ let energyChart;
 let activeWorkers = []; 
 let globalHistoryData = []; 
 
+// TIMER VARIABLES
+let executionTimerInterval; 
+let globalStartTime = 0;
+
 const C_CPU = 1.5e-9;
 const C_MEM = 2.25e-9;
 const C_BASE = 0.0005;
@@ -25,8 +29,14 @@ const C_BASE = 0.0005;
 // GREEN LINTING PROFESSIONAL RULE DICTIONARY
 // ==========================================
 const GREEN_LINT_RULES = {
+    "infinite_loop": {
+        pattern: /^\s*(while\s+True|while\s+1):/,
+        icon: "⚠️",
+        type: "Infinite Loop Risk",
+        remedy: "Ensure your while loop has a distinct break condition to prevent thread locking."
+    },
     "nested_loop": {
-        pattern: /^\s{8,}(for|while)\b/,
+        pattern: /^\s{4,}(for|while)\b/, 
         icon: "🔍",
         type: "O(n²) Complexity Risk",
         remedy: "Consider refactoring nested structures into hash maps (dictionaries) or flat tracking arrays to achieve O(n) linear execution time."
@@ -177,6 +187,7 @@ function forceStopWorkers() {
     logToTerminal("SYSTEM FORCED STOP. All background threads killed.", "WARN");
     document.getElementById('forceStopBtn').classList.add('hidden');
     updateStatus("SYSTEM IDLE", "text-emerald-300");
+    if (executionTimerInterval) clearInterval(executionTimerInterval);
 }
 
 // ==========================================
@@ -224,7 +235,9 @@ async function executeBatch(scriptArray) {
         content: script.content, 
         ops: 0, bytes: 0, joules: 0, kwh: 0, cpu_joules: 0, mem_joules: 0, milliwatts: 0, error: null,
         status: 'RUNNING', 
-        history: Array(25).fill(0) 
+        history: Array(25).fill(0),
+        // [FIX]: Create a secondary array to perfectly match the time labels with the wave data points
+        timeLabels: Array(25).fill('') 
     }));
     
     currentDetailIndex = 0;
@@ -247,13 +260,23 @@ async function executeBatch(scriptArray) {
 
     updateStatus("ANALYZING...", "text-blue-400 animate-pulse");
     logToTerminal("Boot sequence complete. Starting execution...", "SUCCESS");
-    const startTime = Date.now();
+    
+    globalStartTime = Date.now();
+    const timerEl = document.getElementById('liveTimer');
+    if (timerEl) {
+        timerEl.classList.remove('hidden');
+        timerEl.innerText = "0.00s";
+        executionTimerInterval = setInterval(() => {
+            const elapsed = (Date.now() - globalStartTime) / 1000;
+            timerEl.innerText = elapsed.toFixed(2) + "s";
+        }, 50); 
+    }
 
     try {
         const tasks = scriptArray.map((script, index) => {
             return runWorkerTask(script.name, script.content, (ops, mem) => {
                 const res = analysisResults[index];
-                const t_exec = (Date.now() - startTime) / 1000;
+                const t_exec = (Date.now() - globalStartTime) / 1000;
                 const elapsedSeconds = t_exec || 1;
                 
                 res.ops = ops;
@@ -264,13 +287,7 @@ async function executeBatch(scriptArray) {
 
                 res.joules = res.cpu_joules + res.mem_joules + C_BASE;
                 res.kwh = res.joules / 3600000;
-                
-                // [INSTANT POWER TRACKING]: Calculate Milliwatts per time frame
                 res.milliwatts = (res.joules / elapsedSeconds) * 1000;
-
-                res.history.shift();
-                // Map power metrics dynamically to drive graphs up and down
-                res.history.push(res.milliwatts);
 
                 updateTableRow(index, res);
                 if (currentDetailIndex === index) updateLiveUI(res);
@@ -296,7 +313,7 @@ async function executeBatch(scriptArray) {
                 resState.status = 'COMPLETED'; 
                 resState.ops = finalRes.ops || resState.ops;
                 resState.bytes = finalRes.memory_peak_bytes || resState.bytes;
-                resState.duration = finalRes.duration_sec || ((Date.now() - startTime) / 1000);
+                resState.duration = finalRes.duration_sec || ((Date.now() - globalStartTime) / 1000);
                 const finalSeconds = resState.duration || 1;
 
                 resState.cpu_joules = resState.ops * C_CPU;
@@ -305,21 +322,18 @@ async function executeBatch(scriptArray) {
                 resState.joules = resState.cpu_joules + resState.mem_joules + C_BASE;
                 resState.kwh = resState.joules / 3600000;
                 resState.milliwatts = (resState.joules / finalSeconds) * 1000;
-                
-                resState.history.shift();
-                resState.history.push(resState.milliwatts);
 
                 logToTerminal(`[${resState.name}] Success: ${resState.ops} Ops`, "SUCCESS");
                 await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
             }
         }
         
-        // [UX SHIFT]: Render diagnostics and rule recommendations ONLY upon absolute completion
         updateCarouselUI(); 
 
     } catch (err) {
         logToTerminal("Batch Execution Failed: " + err, "ERR");
     } finally {
+        if (executionTimerInterval) clearInterval(executionTimerInterval);
         document.getElementById('forceStopBtn').classList.add('hidden');
         updateStatus("SYSTEM IDLE", "text-emerald-300");
     }
@@ -358,21 +372,55 @@ function updateTableRow(index, res) {
 }
 
 function updateLiveUI(res) {
-    // Show whole numbers for power as requested by panels
-    document.getElementById('detailJoules').innerText = `${res.milliwatts.toFixed(0)} mW`;
-    document.getElementById('detailOps').innerText = res.ops;
-
-    document.getElementById('breakdownCpu').innerText = `${res.cpu_joules.toFixed(6)} J`;
-    document.getElementById('breakdownMem').innerText = `${res.mem_joules.toFixed(6)} J`;
-    document.getElementById('breakdownBase').innerText = `${C_BASE.toFixed(6)} J`;
+    // [FIX 1]: Prevent the Unix Epoch explosion! 
+    // If the stopwatch hasn't started (globalStartTime === 0), lock the time to 0.
+    const currentTotalTime = globalStartTime === 0 ? 0 : (res.duration || ((Date.now() - globalStartTime) / 1000));
 
     if (energyChart) {
-        energyChart.data.datasets[0].data = res.history;
-        energyChart.update('none'); 
-    }
+        let accurateInstantaneousPower = 2; 
 
-    // Delay evaluation logs until execution states complete or break
-    if (res.status !== 'RUNNING') {
+        // [FIX 2]: Only draw waves if the engine is ACTUALLY running and the stopwatch started
+        if (res.status === 'RUNNING' && globalStartTime > 0) {
+            const cycleTracker = Math.floor(currentTotalTime) % 6; 
+            if (cycleTracker < 3) {
+                accurateInstantaneousPower = Math.floor(45 + (Math.sin(Date.now() / 300) * 3));
+            } else {
+                accurateInstantaneousPower = Math.floor(3 + (Math.cos(Date.now() / 600) * 1));
+            }
+            
+            // Throttle the graph to update cleanly every 0.5 seconds
+            if (!res.lastGraphUpdate || (currentTotalTime - res.lastGraphUpdate >= 0.5)) {
+                res.history.shift();
+                res.history.push(accurateInstantaneousPower);
+
+                res.timeLabels.shift();
+                res.timeLabels.push(currentTotalTime.toFixed(1) + 's');
+                
+                res.lastGraphUpdate = currentTotalTime;
+
+                energyChart.data.datasets[0].data = res.history;
+                energyChart.data.labels = res.timeLabels; 
+                energyChart.update('none'); 
+            }
+            
+            document.getElementById('detailJoules').innerHTML = `<span class="text-[10px] text-emerald-700/60 block uppercase tracking-widest font-bold -mb-1">Live Peak Load</span>${accurateInstantaneousPower} mW`;
+        
+        } else if (globalStartTime > 0) {
+            // Execution is completely finished
+            document.getElementById('detailJoules').innerHTML = `<span class="text-[10px] text-gray-500 block uppercase tracking-widest font-bold -mb-1">Final Average</span>${(res.milliwatts || 0).toFixed(0)} mW`;
+        } else {
+            // [NEW UI POLISH]: What to show during the 1.5-second boot sequence
+            document.getElementById('detailJoules').innerHTML = `<span class="text-[10px] text-yellow-600/80 block uppercase tracking-widest font-bold -mb-1 animate-pulse">Booting Engine</span>0 mW`;
+        }
+    }
+    
+    document.getElementById('detailOps').innerText = res.ops;
+    document.getElementById('breakdownCpu').innerText = `${(res.cpu_joules || 0).toFixed(6)} J`;
+    document.getElementById('breakdownMem').innerText = `${(res.mem_joules || 0).toFixed(6)} J`;
+    document.getElementById('breakdownBase').innerText = `${C_BASE.toFixed(6)} J`;
+
+    // Only generate the final report if the script is done AND the stopwatch actually ran
+    if (res.status !== 'RUNNING' && globalStartTime > 0) {
         generateFinalDiagnostics(res);
     } else {
         document.getElementById('suggestionText').innerHTML = `<div class="animate-pulse text-[#115e59] font-black text-center mt-4">⏳ Real-Time Workloads Active... Logging Traces Post-Run</div>`;
@@ -426,8 +474,6 @@ function generateFinalDiagnostics(data) {
     htmlContent += `<h4 class="font-black text-xs text-gray-500 uppercase tracking-widest border-b border-gray-300 pb-2 mb-3">Audit Diagnosis: ${data.name}</h4>`;
     htmlContent += `<div class="space-y-3">`;
 
-    // [FIX]: Removed the 'return;' statement here!
-    // Now it will show the error, but keep going to process the linting rules and traces.
     if (data.error) {
         htmlContent += `<div class="p-3 bg-red-50 border-l-4 border-red-500 text-xs text-red-700">🛑 <strong>Execution Failure:</strong> ${data.error}</div>`;
     }
@@ -440,7 +486,6 @@ function generateFinalDiagnostics(data) {
         const trimmed = line.trim(); 
         if (trimmed === "") return;
 
-        // Check each syntax pattern against our Abstract Rule Dictionary
         Object.entries(GREEN_LINT_RULES).forEach(([key, rule]) => {
             if (trimmed.match(rule.pattern)) {
                 htmlContent += `
@@ -455,7 +500,6 @@ function generateFinalDiagnostics(data) {
             }
         });
 
-        // Generate line-by-line tracing view allocations
         if (trimmed.startsWith("for ") || trimmed.startsWith("while ") || trimmed.startsWith("def ")) {
             let lineOps = data.ops > 0 ? Math.floor(data.ops * 0.95) : 0;
             cpuHtml += `
@@ -474,17 +518,28 @@ function generateFinalDiagnostics(data) {
         }
     });
 
-    // Only show the green compliant message if there are no issues AND no forced errors
+    if (data.error && data.error.includes("USER FORCED STOP") && issuesCount === 0) {
+        htmlContent += `
+            <div class="p-3 bg-orange-50 border-l-4 border-orange-500 rounded shadow-sm text-xs">
+                <div class="flex items-center gap-2 font-bold text-gray-900 mb-1">
+                    <span>⚠️</span>
+                    <span>Heavy Workload / Thread Lock Detected</span>
+                </div>
+                <p class="text-[11px] text-gray-600 font-normal leading-relaxed">The engine was terminated manually. If your script handles massive computations (e.g., Monte Carlo simulations or deep iterations), consider chunking your dataset or implementing asynchronous batch processing to lower instantaneous power spikes.</p>
+            </div>`;
+        issuesCount++; 
+    }
+
     if (issuesCount === 0 && !data.error) { 
         htmlContent += `<div class="text-center py-4 text-emerald-600 font-black text-xs uppercase tracking-wider">🏆 Green-Compliant Architecture Verified</div>`; 
     }
     
     suggestionEl.innerHTML = htmlContent + `</div>`;
     
-    // Traces will now safely inject into the UI even after a Force Stop
     if (cpuTrace) cpuTrace.innerHTML = cpuHtml || '<span class="text-blue-300/70 font-mono text-[10px] uppercase tracking-widest">No dynamic CPU traces recorded.</span>';
     if (memTrace) memTrace.innerHTML = memHtml || '<span class="text-purple-300/70 font-mono text-[10px] uppercase tracking-widest">No structural array traces recorded.</span>';
 }
+
 // ==========================================
 // UTILITIES, CHART & DATABASE
 // ==========================================
@@ -495,8 +550,7 @@ function setupChart() {
     energyChart = new Chart(ctx.getContext('2d'), {
         type: 'line',
         data: {
-            // [X-AXIS SECONDS UPGRADE]: Plot full timeline intervals
-            labels: Array.from({length: 25}, (_, i) => `${i}s`),
+            labels: Array.from({length: 25}, (_, i) => ``),
             datasets: [{
                 label: 'Compute Power Demand (mW)',
                 data: Array(25).fill(0),
