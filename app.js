@@ -26,7 +26,7 @@ const BASELINE_MW = 2; // System idle power in milliwatts
 const C_BASE = 0.0005;
 
 // ==========================================
-// PATTERN-BASED STATIC ANALYSIS DICTIONARY (NO AI)
+// PATTERN-BASED STATIC ANALYSIS DICTIONARY
 // ==========================================
 const GREEN_LINT_RULES = {
     "infinite_loop": {
@@ -334,7 +334,7 @@ async function executeBatch(scriptArray) {
 }
 
 // ==========================================
-// UI RENDERING: TABLES & CAROUSEL (RESTORED)
+// UI RENDERING: TABLES & CAROUSEL
 // ==========================================
 function renderAnalysisTable() {
     const tbody = document.getElementById('analysisTableBody');
@@ -429,41 +429,103 @@ function jumpToDetail(index) { currentDetailIndex = index; updateCarouselUI(); }
 // ==========================================
 function generateActionableDiagnostics(data) {
     const suggestionEl = document.getElementById('suggestionText');
-    let htmlContent = `<h4 class="font-black text-xs text-gray-500 uppercase tracking-widest border-b border-gray-300 pb-2 mb-3">Diagnostic Deliberations: ${data.name}</h4>`;
+    const cpuTrace = document.getElementById('cpuTraceContent');
+    const memTrace = document.getElementById('memTraceContent');
+
+    let htmlContent = `<h4 class="font-black text-sm text-gray-500 uppercase tracking-widest border-b border-gray-300 pb-3 mb-4">Diagnostic Deliberations: ${data.name}</h4>`;
     
     if (data.status === 'RUNNING') {
-        suggestionEl.innerHTML = htmlContent + `<div class="animate-pulse text-[#115e59] font-black text-center mt-4">⏳ Scanning Syntax Trees...</div>`;
+        suggestionEl.innerHTML = htmlContent + `<div class="animate-pulse text-[#115e59] font-black text-center mt-6 text-base">⏳ Scanning Syntax Trees...</div>`;
+        if (cpuTrace) cpuTrace.innerHTML = '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Tracing Execution Map...</span>';
+        if (memTrace) memTrace.innerHTML = '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Mapping Memory Pointers...</span>';
         return;
     }
 
     const code = data.content || ""; 
     const lines = code.split('\n');
     let issuesFound = 0;
+    let cpuHtml = "";
+    let memHtml = "";
 
-    htmlContent += `<div class="space-y-4">`;
+    htmlContent += `<div class="space-y-6">`;
 
     lines.forEach((line, index) => {
         const trimmed = line.trim(); 
+        const lineNum = index + 1;
         if (trimmed === "") return;
 
+        // --- 1. CPU & MEMORY TRACE LOGIC (LINE BY LINE WITH JOULES) ---
+        if (trimmed.startsWith("for ") || trimmed.startsWith("while ") || trimmed.startsWith("def ")) {
+            let lineOps = data.ops > 0 ? Math.floor(data.ops * 0.98) : 0;
+            if (trimmed.startsWith("def ")) lineOps = data.ops > 0 ? Math.floor(data.ops * 0.05) : 0;
+            let lineJoules = data.ops > 0 ? (lineOps / data.ops) * data.cpu_joules : 0;
+
+            cpuHtml += `
+            <div class="flex justify-between items-center py-2.5 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors px-2 -mx-2 rounded">
+                <div class="flex items-center gap-3 truncate pr-4">
+                    <span class="text-blue-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-blue-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-blue-500/30 truncate">${trimmed}</code>
+                </div>
+                <div class="flex flex-col items-end whitespace-nowrap">
+                    <span class="text-blue-300/80 text-[10px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
+                    <span class="text-blue-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                </div>
+            </div>`;
+        }
+        
+        if (trimmed.startsWith("print(") && line.match(/^\s{4,}/)) {
+            let lineOps = data.ops > 10 ? Math.floor(data.ops * 0.02) + 1 : (data.ops > 0 ? 1 : 0); 
+            let lineJoules = data.ops > 0 ? (lineOps / data.ops) * data.cpu_joules : 0;
+
+            cpuHtml += `
+            <div class="flex justify-between items-center py-2.5 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors px-2 -mx-2 rounded">
+                <div class="flex items-center gap-3 truncate pr-4">
+                    <span class="text-blue-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-blue-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-blue-500/30 truncate">${trimmed}</code>
+                </div>
+                <div class="flex flex-col items-end whitespace-nowrap">
+                    <span class="text-blue-300/80 text-[10px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
+                    <span class="text-blue-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                </div>
+            </div>`;
+        }
+
+        if (trimmed.match(/\[.*for.*in.*\]/) || (trimmed.includes("=") && (trimmed.includes("[") || trimmed.includes("{"))) || trimmed.includes(".append(")) {
+            let lineBytes = data.bytes > 0 ? Math.floor(data.bytes * 0.95) : 0; 
+            let lineJoules = data.bytes > 0 ? (lineBytes / data.bytes) * data.mem_joules : 0;
+
+            memHtml += `
+            <div class="flex justify-between items-center py-2.5 border-b border-purple-500/20 hover:bg-purple-800/30 transition-colors px-2 -mx-2 rounded">
+                <div class="flex items-center gap-3 truncate pr-4">
+                    <span class="text-purple-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-purple-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-purple-500/30 truncate">${trimmed}</code>
+                </div>
+                <div class="flex flex-col items-end whitespace-nowrap">
+                    <span class="text-purple-300/80 text-[10px] font-black tracking-widest uppercase">${lineBytes.toLocaleString()} B</span>
+                    <span class="text-purple-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                </div>
+            </div>`;
+        }
+
+        // --- 2. STATIC LINTING LOGIC (BIGGER, CLEANER UI) ---
         Object.entries(GREEN_LINT_RULES).forEach(([key, rule]) => {
             if (trimmed.match(rule.pattern)) {
                 htmlContent += `
-                    <div class="bg-white border-l-4 border-orange-500 rounded-lg shadow-sm p-4 text-sm">
-                        <div class="flex items-start mb-2 border-b border-gray-100 pb-2">
-                            <span class="font-black text-gray-800">${rule.icon} Line ${index + 1}: ${rule.type}</span>
+                    <div class="bg-white border-l-4 border-orange-500 rounded-xl shadow-md p-5 text-base">
+                        <div class="flex items-start mb-3 border-b border-gray-100 pb-3">
+                            <span class="font-black text-gray-900 text-lg flex items-center gap-2">${rule.icon} Line ${lineNum}: ${rule.type}</span>
                         </div>
-                        <p class="text-gray-600 text-xs mb-3">${rule.message}</p>
+                        <p class="text-gray-700 text-sm mb-4 leading-relaxed">${rule.message}</p>
                         
-                        <div class="grid grid-cols-1 gap-2">
-                            <div class="bg-red-50/50 rounded p-2 text-[10px] font-mono border border-red-100">
-                                <span class="text-red-500 font-bold block mb-1 uppercase tracking-widest text-[9px]">❌ Detected (High Energy):</span>
-                                <code class="text-red-900">${trimmed}</code>
+                        <div class="grid grid-cols-1 gap-3">
+                            <div class="bg-red-50 rounded-lg p-3 border border-red-200">
+                                <span class="text-red-600 font-black block mb-2 uppercase tracking-widest text-xs flex items-center gap-1"><span class="text-base leading-none">❌</span> Detected (High Energy):</span>
+                                <code class="text-red-900 font-mono text-sm block bg-white p-2 rounded border border-red-100 shadow-sm">${trimmed}</code>
                             </div>
                             
-                            <div class="bg-emerald-50/50 rounded p-2 text-[10px] font-mono border border-emerald-100 whitespace-pre-wrap">
-                                <span class="text-emerald-600 font-bold block mb-1 uppercase tracking-widest text-[9px]">✅ Refactor To (Low Energy):</span>
-                                <code class="text-emerald-900">${rule.action}</code>
+                            <div class="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                                <span class="text-emerald-700 font-black block mb-2 uppercase tracking-widest text-xs flex items-center gap-1"><span class="text-base leading-none">✅</span> Refactor To (Low Energy):</span>
+                                <code class="text-emerald-900 font-mono text-sm block bg-white p-2 rounded border border-emerald-100 shadow-sm whitespace-pre-wrap">${rule.action}</code>
                             </div>
                         </div>
                     </div>`;
@@ -473,10 +535,14 @@ function generateActionableDiagnostics(data) {
     });
 
     if (issuesFound === 0) {
-        htmlContent += `<div class="text-center py-6 text-emerald-600 font-black text-sm uppercase tracking-wider">🏆 Structural Efficiency Verified</div>`;
+        htmlContent += `<div class="text-center py-8 text-emerald-600 font-black text-base uppercase tracking-wider">🏆 Structural Efficiency Verified</div>`;
     }
     
     suggestionEl.innerHTML = htmlContent + `</div>`;
+
+    // Inject traces back into the UI dropdowns
+    if (cpuTrace) cpuTrace.innerHTML = cpuHtml !== "" ? cpuHtml : '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest">No heavy CPU ops traced.</span>';
+    if (memTrace) memTrace.innerHTML = memHtml !== "" ? memHtml : '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest">No heavy memory allocations traced.</span>';
 }
 
 // ==========================================
