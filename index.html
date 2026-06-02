@@ -129,7 +129,7 @@
                             <p id="detailJoules" class="text-2xl lg:text-3xl font-black text-[#115e59]">0 <span class="text-xl">mW</span></p>
                         </div>
                         <div class="glass-card p-4 rounded-xl text-center border-b-4 border-blue-500">
-                            <p class="text-xs text-blue-800 font-black uppercase tracking-widest">Instrumented Operations</p>
+                            <p class="text-xs text-blue-800 font-black uppercase tracking-widest">Complexity Ops</p>
                             <p id="detailOps" class="text-2xl lg:text-3xl font-black text-blue-800">0</p>
                         </div>
                     </div>  
@@ -143,10 +143,11 @@
 
                         <div class="bg-[#111827] text-emerald-400 p-3 rounded-lg mb-4 font-mono text-[10px] leading-relaxed shadow-inner">
                             <p class="text-emerald-200 mb-2 font-bold text-xs">/// HEURISTIC EQUATION GUIDE</p>
-                            <p><span class="text-blue-400 font-bold">CPU Work</span> = N_Ops × 1.5e-9 Joules</p>
-                            <p><span class="text-purple-400 font-bold">Memory Work</span> = M_Peak_Bytes × T_Exec_Sec × 2.25e-9 Joules</p>
+                            <p><span class="text-blue-400 font-bold">CPU Work (Joules)</span> = N_Ops × 1.5e-9</p>
+                            <p><span class="text-purple-400 font-bold">Memory Work (Joules)</span> = M_Peak_Bytes × T_Exec_Sec × 2.25e-9</p>
                             <div class="border-t border-gray-700 mt-2 pt-2 text-gray-300">
-                                <p>Total Power (Watts) = (CPU Work + Memory Work) / Execution Time</p>
+                                <p>Total Energy (J) = CPU Work + Memory Work + 0.0005 (Base)</p>
+                                <p>Average Power (mW) = (Total Energy / T_Exec_Sec) * 1000</p>
                             </div>
                         </div>
                         
@@ -233,7 +234,7 @@
                     <thead class="bg-gray-200 text-gray-700 text-xs uppercase tracking-wider">
                         <tr>
                             <th class="py-3 px-4">File Name</th>
-                            <th class="py-3 px-4">Instrumented Ops</th>
+                            <th class="py-3 px-4">Complexity Ops</th>
                             <th class="py-3 px-4">Peak Memory</th>
                             <th class="py-3 px-4 text-center">Avg Power (mW)</th>
                             <th class="py-3 px-4 text-center">Total kWh</th>

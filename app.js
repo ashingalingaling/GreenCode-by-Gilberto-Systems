@@ -31,35 +31,30 @@ const C_BASE = 0.0005;
 const GREEN_LINT_RULES = {
     "infinite_loop": {
         pattern: /^\s*(while\s+True|while\s+1):/,
-        icon: "⚠️",
         type: "Infinite Loop Risk",
         message: "Unbounded loops permanently lock CPU threads, draining constant baseline power.",
         action: "while condition_met:  # Add a deterministic break condition"
     },
     "nested_loop": {
         pattern: /^\s{4,}(for|while)\b/, 
-        icon: "🔥",
         type: "O(n²) Complexity Spike",
         message: "Nested iteration causes exponential operation growth. A 100-item list requires 10,000 ops.",
         action: "hash_map = {item.id: item}  # Flatten to O(n) using a dictionary lookup"
     },
     "sleep_block": {
         pattern: /time\.sleep\(/,
-        icon: "⏰",
         type: "Synchronous Thread Block",
         message: "Hardware clocks remain active and consume power while waiting for synchronous sleep timers.",
         action: "await asyncio.sleep(n)  # Yield thread control back to the OS"
     },
     "io_print": {
         pattern: /^\s+(print|sys\.stdout\.write)\(/,
-        icon: "🖨️",
         type: "I/O Hardware Wake",
         message: "Calling standard output inside a loop triggers hardware interrupts repeatedly.",
         action: "buffer.append(data)\nprint(''.join(buffer))  # Batch output outside the loop"
     },
     "memory_load": {
         pattern: /\.(read|readlines)\(\)/,
-        icon: "📂",
         type: "RAM Saturation",
         message: "Loading entire file objects into memory forces garbage collection and swap-file usage.",
         action: "for line in file:  # Use a generator/iterator for lazy loading"
@@ -247,7 +242,7 @@ async function executeBatch(scriptArray) {
     }));
     
     currentDetailIndex = 0;
-    renderAnalysisTable(); // FINALLY RESTORED
+    renderAnalysisTable();
     updateCarouselUI();
 
     logToTerminal("Initializing Instruction-Level Energy Model...", "INFO");
@@ -317,7 +312,7 @@ async function executeBatch(scriptArray) {
                 resState.milliwatts = resState.duration > 0 ? (resState.joules / resState.duration) * 1000 : BASELINE_MW;
                 if(resState.milliwatts < BASELINE_MW) resState.milliwatts = BASELINE_MW;
 
-                logToTerminal(`[${resState.name}] Success: ${resState.ops} Inst. Ops`, "SUCCESS");
+                logToTerminal(`[${resState.name}] Success: ${resState.ops} Complexity Ops`, "SUCCESS");
                 await saveResultToDatabase(resState.name, resState.ops, resState.bytes, resState.joules, resState.kwh);
             }
             updateTableRow(i, resState);
@@ -346,7 +341,7 @@ function renderAnalysisTable() {
         tbody.innerHTML += `
             <tr id="row-${index}" class="${bgClass} border-b border-gray-100 cursor-pointer hover:bg-emerald-50" onclick="jumpToDetail(${index})">
                 <td class="py-3 px-4 font-bold text-gray-700">${res.name}</td>
-                <td class="py-3 px-4 text-blue-600 font-mono op-cell">${res.ops} Inst. Ops</td>
+                <td class="py-3 px-4 text-blue-600 font-mono op-cell">${res.ops} Ops</td>
                 <td class="py-3 px-4 text-purple-600 font-mono byte-cell">${res.bytes} B</td>
                 <td class="py-3 px-4 text-emerald-600 font-bold font-mono joule-cell">${Math.ceil(res.milliwatts)} mW</td>
                 <td class="py-3 px-4 text-gray-500 font-mono kwh-cell">${res.kwh.toExponential(3)} kWh</td>
@@ -358,7 +353,7 @@ function renderAnalysisTable() {
 function updateTableRow(index, res) {
     const row = document.getElementById(`row-${index}`);
     if (row) {
-        row.querySelector('.op-cell').innerText = `${res.ops} Inst. Ops`;
+        row.querySelector('.op-cell').innerText = `${res.ops} Ops`;
         row.querySelector('.byte-cell').innerText = `${res.bytes} B`;
         row.querySelector('.joule-cell').innerText = `${Math.ceil(res.milliwatts)} mW`;
         row.querySelector('.kwh-cell').innerText = `${res.kwh.toExponential(3)} kWh`;
@@ -432,10 +427,10 @@ function generateActionableDiagnostics(data) {
     const cpuTrace = document.getElementById('cpuTraceContent');
     const memTrace = document.getElementById('memTraceContent');
 
-    let htmlContent = `<h4 class="font-black text-sm text-gray-500 uppercase tracking-widest border-b border-gray-300 pb-3 mb-4">Diagnostic Deliberations: ${data.name}</h4>`;
+    let htmlContent = `<h4 class="font-black text-xs text-gray-500 uppercase tracking-widest border-b border-gray-300 pb-2 mb-3">Diagnostic Deliberations: ${data.name}</h4>`;
     
     if (data.status === 'RUNNING') {
-        suggestionEl.innerHTML = htmlContent + `<div class="animate-pulse text-[#115e59] font-black text-center mt-6 text-base">⏳ Scanning Syntax Trees...</div>`;
+        suggestionEl.innerHTML = htmlContent + `<div class="animate-pulse text-[#115e59] font-black text-center mt-4 text-sm uppercase tracking-widest">Scanning Syntax Trees...</div>`;
         if (cpuTrace) cpuTrace.innerHTML = '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Tracing Execution Map...</span>';
         if (memTrace) memTrace.innerHTML = '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Mapping Memory Pointers...</span>';
         return;
@@ -444,10 +439,10 @@ function generateActionableDiagnostics(data) {
     const code = data.content || ""; 
     const lines = code.split('\n');
     let issuesFound = 0;
-    let cpuHtml = "";
-    let memHtml = "";
+    let cpuHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; // Scroll container added
+    let memHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; // Scroll container added
 
-    htmlContent += `<div class="space-y-6">`;
+    htmlContent += `<div class="space-y-4">`;
 
     lines.forEach((line, index) => {
         const trimmed = line.trim(); 
@@ -461,14 +456,14 @@ function generateActionableDiagnostics(data) {
             let lineJoules = data.ops > 0 ? (lineOps / data.ops) * data.cpu_joules : 0;
 
             cpuHtml += `
-            <div class="flex justify-between items-center py-2.5 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors px-2 -mx-2 rounded">
-                <div class="flex items-center gap-3 truncate pr-4">
-                    <span class="text-blue-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
-                    <code class="bg-[#0f172a] text-blue-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-blue-500/30 truncate">${trimmed}</code>
+            <div class="flex justify-between items-center py-2 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors">
+                <div class="flex items-center gap-2 truncate pr-2 w-3/4">
+                    <span class="text-blue-200 font-bold text-xs">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-blue-100 px-1.5 py-0.5 rounded font-mono text-[10px] border border-blue-500/30 truncate flex-1">${trimmed}</code>
                 </div>
-                <div class="flex flex-col items-end whitespace-nowrap">
-                    <span class="text-blue-300/80 text-[10px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
-                    <span class="text-blue-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                <div class="flex flex-col items-end w-1/4">
+                    <span class="text-blue-300/80 text-[9px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
+                    <span class="text-blue-400 font-bold text-xs">${lineJoules.toFixed(6)} J</span>
                 </div>
             </div>`;
         }
@@ -478,14 +473,14 @@ function generateActionableDiagnostics(data) {
             let lineJoules = data.ops > 0 ? (lineOps / data.ops) * data.cpu_joules : 0;
 
             cpuHtml += `
-            <div class="flex justify-between items-center py-2.5 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors px-2 -mx-2 rounded">
-                <div class="flex items-center gap-3 truncate pr-4">
-                    <span class="text-blue-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
-                    <code class="bg-[#0f172a] text-blue-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-blue-500/30 truncate">${trimmed}</code>
+            <div class="flex justify-between items-center py-2 border-b border-blue-500/20 hover:bg-blue-800/30 transition-colors">
+                <div class="flex items-center gap-2 truncate pr-2 w-3/4">
+                    <span class="text-blue-200 font-bold text-xs">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-blue-100 px-1.5 py-0.5 rounded font-mono text-[10px] border border-blue-500/30 truncate flex-1">${trimmed}</code>
                 </div>
-                <div class="flex flex-col items-end whitespace-nowrap">
-                    <span class="text-blue-300/80 text-[10px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
-                    <span class="text-blue-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                <div class="flex flex-col items-end w-1/4">
+                    <span class="text-blue-300/80 text-[9px] font-black tracking-widest uppercase">${lineOps.toLocaleString()} Ops</span>
+                    <span class="text-blue-400 font-bold text-xs">${lineJoules.toFixed(6)} J</span>
                 </div>
             </div>`;
         }
@@ -495,37 +490,37 @@ function generateActionableDiagnostics(data) {
             let lineJoules = data.bytes > 0 ? (lineBytes / data.bytes) * data.mem_joules : 0;
 
             memHtml += `
-            <div class="flex justify-between items-center py-2.5 border-b border-purple-500/20 hover:bg-purple-800/30 transition-colors px-2 -mx-2 rounded">
-                <div class="flex items-center gap-3 truncate pr-4">
-                    <span class="text-purple-200 font-bold text-xs min-w-[50px]">Line ${lineNum}:</span>
-                    <code class="bg-[#0f172a] text-purple-100 px-2 py-1 rounded font-mono text-xs shadow-inner border border-purple-500/30 truncate">${trimmed}</code>
+            <div class="flex justify-between items-center py-2 border-b border-purple-500/20 hover:bg-purple-800/30 transition-colors">
+                <div class="flex items-center gap-2 truncate pr-2 w-3/4">
+                    <span class="text-purple-200 font-bold text-xs">Line ${lineNum}:</span>
+                    <code class="bg-[#0f172a] text-purple-100 px-1.5 py-0.5 rounded font-mono text-[10px] border border-purple-500/30 truncate flex-1">${trimmed}</code>
                 </div>
-                <div class="flex flex-col items-end whitespace-nowrap">
-                    <span class="text-purple-300/80 text-[10px] font-black tracking-widest uppercase">${lineBytes.toLocaleString()} B</span>
-                    <span class="text-purple-400 font-bold text-sm">${lineJoules.toFixed(6)} J</span>
+                <div class="flex flex-col items-end w-1/4">
+                    <span class="text-purple-300/80 text-[9px] font-black tracking-widest uppercase">${lineBytes.toLocaleString()} B</span>
+                    <span class="text-purple-400 font-bold text-xs">${lineJoules.toFixed(6)} J</span>
                 </div>
             </div>`;
         }
 
-        // --- 2. STATIC LINTING LOGIC (BIGGER, CLEANER UI) ---
+        // --- 2. STATIC LINTING LOGIC (SMALLER, COMPACT UI) ---
         Object.entries(GREEN_LINT_RULES).forEach(([key, rule]) => {
             if (trimmed.match(rule.pattern)) {
                 htmlContent += `
-                    <div class="bg-white border-l-4 border-orange-500 rounded-xl shadow-md p-5 text-base">
-                        <div class="flex items-start mb-3 border-b border-gray-100 pb-3">
-                            <span class="font-black text-gray-900 text-lg flex items-center gap-2">${rule.icon} Line ${lineNum}: ${rule.type}</span>
+                    <div class="bg-white border-l-4 border-orange-500 rounded-lg shadow-sm p-4 text-sm">
+                        <div class="flex items-start mb-2 border-b border-gray-100 pb-2">
+                            <span class="font-black text-gray-900 text-sm uppercase tracking-wider">Line ${lineNum}: ${rule.type}</span>
                         </div>
-                        <p class="text-gray-700 text-sm mb-4 leading-relaxed">${rule.message}</p>
+                        <p class="text-gray-600 text-xs mb-3 leading-relaxed">${rule.message}</p>
                         
-                        <div class="grid grid-cols-1 gap-3">
-                            <div class="bg-red-50 rounded-lg p-3 border border-red-200">
-                                <span class="text-red-600 font-black block mb-2 uppercase tracking-widest text-xs flex items-center gap-1"><span class="text-base leading-none">❌</span> Detected (High Energy):</span>
-                                <code class="text-red-900 font-mono text-sm block bg-white p-2 rounded border border-red-100 shadow-sm">${trimmed}</code>
+                        <div class="grid grid-cols-1 gap-2">
+                            <div class="bg-red-50 rounded p-2 border border-red-100">
+                                <span class="text-red-600 font-bold block mb-1 uppercase tracking-widest text-[9px]">Detected (High Energy):</span>
+                                <code class="text-red-900 font-mono text-[10px] block bg-white p-1 rounded shadow-sm">${trimmed}</code>
                             </div>
                             
-                            <div class="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-                                <span class="text-emerald-700 font-black block mb-2 uppercase tracking-widest text-xs flex items-center gap-1"><span class="text-base leading-none">✅</span> Refactor To (Low Energy):</span>
-                                <code class="text-emerald-900 font-mono text-sm block bg-white p-2 rounded border border-emerald-100 shadow-sm whitespace-pre-wrap">${rule.action}</code>
+                            <div class="bg-emerald-50 rounded p-2 border border-emerald-100">
+                                <span class="text-emerald-700 font-bold block mb-1 uppercase tracking-widest text-[9px]">Refactor To (Low Energy):</span>
+                                <code class="text-emerald-900 font-mono text-[10px] block bg-white p-1 rounded shadow-sm whitespace-pre-wrap">${rule.action}</code>
                             </div>
                         </div>
                     </div>`;
@@ -534,15 +529,17 @@ function generateActionableDiagnostics(data) {
         });
     });
 
+    cpuHtml += `</div>`; // Close scroll container
+    memHtml += `</div>`; // Close scroll container
+
     if (issuesFound === 0) {
-        htmlContent += `<div class="text-center py-8 text-emerald-600 font-black text-base uppercase tracking-wider">🏆 Structural Efficiency Verified</div>`;
+        htmlContent += `<div class="text-center py-6 text-emerald-600 font-black text-sm uppercase tracking-wider">Structural Efficiency Verified</div>`;
     }
     
     suggestionEl.innerHTML = htmlContent + `</div>`;
 
-    // Inject traces back into the UI dropdowns
-    if (cpuTrace) cpuTrace.innerHTML = cpuHtml !== "" ? cpuHtml : '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest">No heavy CPU ops traced.</span>';
-    if (memTrace) memTrace.innerHTML = memHtml !== "" ? memHtml : '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest">No heavy memory allocations traced.</span>';
+    if (cpuTrace) cpuTrace.innerHTML = cpuHtml.includes("Line ") ? cpuHtml : '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest">No heavy CPU ops traced.</span>';
+    if (memTrace) memTrace.innerHTML = memHtml.includes("Line ") ? memHtml : '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest">No heavy memory allocations traced.</span>';
 }
 
 // ==========================================
@@ -730,7 +727,7 @@ function renderHistoryTable(dataToRender) {
                 <input type="checkbox" value="${row.id}" class="hidden history-checkbox" data-group="${groupKey}">
                 ${displayFilename}
             </td>
-            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Inst. Ops</td>
+            <td class="py-3 px-4 font-mono text-blue-700">${row.ops} Complexity Ops</td>
             <td class="py-3 px-4 font-mono text-purple-700">${row.peak_memory_bytes} B</td>
             <td class="py-3 px-4 text-center font-black text-emerald-600">${preciseJoules.toFixed(6)} J</td>
             <td class="py-3 px-4 text-center font-mono text-gray-600">${preciseKwh.toExponential(3)} kWh</td>
@@ -798,7 +795,7 @@ function exportSelectedCSV() {
     if (selectedData.length === 0) return alert("Error fetching data for export.");
 
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Filename,Instrumented Operations,Peak Memory (Bytes),Energy (Joules),Energy (kWh),Date Computed\n"; 
+    csvContent += "Filename,Complexity Operations,Peak Memory (Bytes),Energy (Joules),Energy (kWh),Date Computed\n"; 
 
     selectedData.forEach(row => {
         const dateStr = new Date(row.created_at).toLocaleString().replace(/,/g, ''); 
