@@ -389,23 +389,74 @@ function updateLiveUI(res, currentTime) {
                 energyChart.update('none'); 
             }
             
-            document.getElementById('detailJoules').innerHTML = `${instant_mW} <span class="text-xl">mW</span>`;
+            document.getElementById('detailMilliwatts').innerHTML = `${instant_mW} <span class="text-xl">mW</span>`;
         }
     } else {
         const avg_mW = Math.ceil(res.milliwatts);
-        document.getElementById('detailJoules').innerHTML = `${avg_mW} <span class="text-xl">mW</span>`;
+        document.getElementById('detailMilliwatts').innerHTML = `${avg_mW} <span class="text-xl">mW</span>`;
         if (energyChart) {
             energyChart.data.datasets[0].data = res.history;
             energyChart.update('none');
         }
     }
     
+    // Updates for new JSON/Visualizer metrics
+    let current_J = (res.cpu_joules || 0) + (res.mem_joules || 0) + C_BASE;
+    document.getElementById('detailJoules').textContent = current_J.toFixed(6) + " J";
+    
     document.getElementById('detailOps').innerText = res.ops.toLocaleString();
     document.getElementById('breakdownCpu').innerText = `${(res.cpu_joules || 0).toFixed(6)} J`;
     document.getElementById('breakdownMem').innerText = `${(res.mem_joules || 0).toFixed(6)} J`;
     document.getElementById('breakdownBase').innerText = `${C_BASE.toFixed(6)} J`;
+
+    // Update dynamic formula 
+    document.getElementById('dynCpu').textContent = (res.cpu_joules || 0).toFixed(6);
+    document.getElementById('dynMem').textContent = (res.mem_joules || 0).toFixed(6);
+    document.getElementById('dynTotal').textContent = current_J.toFixed(6);
+    document.getElementById('dynTime').textContent = (res.duration || currentTime || 0).toFixed(2) + "s";
     
-    generateActionableDiagnostics(res);
+    // 1. Capture the exact number of architectural warnings found
+    const issuesFound = generateActionableDiagnostics(res);
+
+    // --- ENTERPRISE SCALED REAL WORLD IMPACT LOGIC ---
+    // Scale up to Enterprise Load: Assume 100 executions per second for 1 year (31,536,000 seconds)
+    const enterprise_executions_per_year = 3153600000; 
+    const annual_joules = current_J * enterprise_executions_per_year;
+    const annual_kwh = annual_joules / 3600000;
+
+    // Relatable Equivalents:
+    // 1 smartphone charge = ~15 Wh = 0.015 kWh
+    const smartphone_charges = Math.floor(annual_kwh / 0.015).toLocaleString();
+    // 10W LED bulb hours = annual_kwh / 0.010 kW
+    const led_hours = Math.floor(annual_kwh / 0.010).toLocaleString();
+    
+    const impactCard = document.getElementById('ecoImpactCard');
+    const impactHeader = document.getElementById('ecoImpactHeader');
+    const impactText = document.getElementById('ecoImpactText');
+
+    if (res.status === 'RUNNING') {
+        impactText.innerText = "Scanning telemetry to scale environmental footprint...";
+        impactCard.className = "glass-card p-6 rounded-2xl flex flex-col transition-colors animate-pulse";
+        impactHeader.className = "text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2";
+        impactText.className = "flex-1 bg-gray-200 rounded-xl p-4 text-sm font-bold text-gray-500 leading-relaxed";
+    } else {
+        // Tie the impact directly to whether the code has structural flaws!
+        if (issuesFound > 0) { 
+            // BAD CODE: Structural Flaws Found
+            impactText.innerHTML = `⚠️ <b>Heavy Footprint:</b> Deployed at enterprise scale (100 req/sec), this unoptimized architecture would consume <b>${annual_kwh.toLocaleString(undefined, {maximumFractionDigits: 2})} kWh</b> annually. That wasted baseline energy is equivalent to fully charging a smartphone <b>${smartphone_charges} times</b> or leaving a 10W LED bulb on for <b>${led_hours} hours</b> continuously.`;
+            
+            // Red/Orange Styling matching the suggestions panel
+            impactHeader.className = "text-xs font-black text-red-600 uppercase tracking-widest mb-4 flex items-center gap-2";
+            impactText.className = "flex-1 bg-red-50 border border-red-200 rounded-xl p-4 text-sm font-bold text-gray-700 leading-relaxed shadow-inner";
+        } else { 
+            // GOOD CODE: 0 Structural Flaws
+            impactText.innerHTML = `🌱 <b>Eco-Optimized:</b> By implementing structural optimization, you successfully prevented hardware burnout. At enterprise scale, this refactored footprint scales highly efficiently, capping annual baseline consumption to a sustainable <b>${annual_kwh.toLocaleString(undefined, {maximumFractionDigits: 2})} kWh</b>.`;
+            
+            // Green Styling matching the suggestions panel
+            impactHeader.className = "text-xs font-black text-emerald-700 uppercase tracking-widest mb-4 flex items-center gap-2";
+            impactText.className = "flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm font-bold text-gray-700 leading-relaxed shadow-inner";
+        }
+    }
 }
 
 function updateCarouselUI() {
@@ -433,14 +484,14 @@ function generateActionableDiagnostics(data) {
         suggestionEl.innerHTML = htmlContent + `<div class="animate-pulse text-[#115e59] font-black text-center mt-4 text-sm uppercase tracking-widest">Scanning Syntax Trees...</div>`;
         if (cpuTrace) cpuTrace.innerHTML = '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Tracing Execution Map...</span>';
         if (memTrace) memTrace.innerHTML = '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest animate-pulse">Mapping Memory Pointers...</span>';
-        return;
+        return 0; // Return 0 during running state
     }
 
     const code = data.content || ""; 
     const lines = code.split('\n');
     let issuesFound = 0;
-    let cpuHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; // Scroll container added
-    let memHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; // Scroll container added
+    let cpuHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; 
+    let memHtml = `<div class="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">`; 
 
     htmlContent += `<div class="space-y-4">`;
 
@@ -529,8 +580,8 @@ function generateActionableDiagnostics(data) {
         });
     });
 
-    cpuHtml += `</div>`; // Close scroll container
-    memHtml += `</div>`; // Close scroll container
+    cpuHtml += `</div>`; 
+    memHtml += `</div>`; 
 
     if (issuesFound === 0) {
         htmlContent += `<div class="text-center py-6 text-emerald-600 font-black text-sm uppercase tracking-wider">Structural Efficiency Verified</div>`;
@@ -540,6 +591,9 @@ function generateActionableDiagnostics(data) {
 
     if (cpuTrace) cpuTrace.innerHTML = cpuHtml.includes("Line ") ? cpuHtml : '<span class="text-blue-300/70 font-mono text-xs uppercase tracking-widest">No heavy CPU ops traced.</span>';
     if (memTrace) memTrace.innerHTML = memHtml.includes("Line ") ? memHtml : '<span class="text-purple-300/70 font-mono text-xs uppercase tracking-widest">No heavy memory allocations traced.</span>';
+
+    // Crucial fix: return the number of structural flaws found
+    return issuesFound;
 }
 
 // ==========================================
